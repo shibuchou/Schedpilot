@@ -1,0 +1,21 @@
+{
+  "started": "2026-10-01T08:31:13+00:00",
+  "host": "schedpilot-sp4",
+  "kernel": "6.6.0-schedpilot",
+  "runs": 10,
+  "duration_s": 60,
+  "warmup_s": 10,
+  "arms": "A,B,D,X-simple,X-flatcg",
+  "server_cpus": "0-3",
+  "client_cpus": "4-7",
+  "interference_cpus": "0-3",
+  "interference": true,
+  "interference_cpu_workers": 4,
+  "interference_vm_workers": 2,
+  "interference_vm_bytes": "1G",
+  "workload": "redis",
+  "port": 6399,
+  "config": "/root/schedpilot/configs/redis.conf",
+  "baseline_note": "Baseline is the openEuler default fair-class scheduler (competition text: default CFS); Linux 6.6 fair-class internals are not assumed identical to mainline classic CFS.",
+  "git_commit": "30f13482ce0c718472bb7f04ee8396622643735a"
+}

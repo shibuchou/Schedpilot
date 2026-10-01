@@ -87,6 +87,18 @@ static bool match_proc_name(const std::string &name,
 	return false;
 }
 
+// Exclude lists must match exactly: prefix matching would wrongly exclude
+// e.g. "mysqld" when excluding "mysql" or "redis-server-x" for "redis-server".
+static bool match_exact_name(const std::string &name,
+			     const std::vector<std::string> &patterns)
+{
+	for (const auto &p : patterns) {
+		if (!p.empty() && name == p)
+			return true;
+	}
+	return false;
+}
+
 static std::string read_comm(uint32_t tgid)
 {
 	std::ifstream in("/proc/" + std::to_string(tgid) + "/comm");
@@ -116,9 +128,9 @@ scan_targets(const DaemonSettings &s)
 		std::string comm = read_comm(tgid);
 		if (comm.empty())
 			continue;
-		if (match_proc_name(comm, s.excludes))
+		if (match_exact_name(comm, s.excludes))
 			continue;
-		if (match_proc_name(comm, s.targets))
+		if (match_proc_name(comm, s.targets) || match_proc_name(comm, s.bg))
 			found[tgid] = comm;
 	}
 	closedir(dir);
@@ -526,6 +538,24 @@ int main(int argc, char **argv)
 		log(LogLevel::Info, "PMU available");
 
 	auto llc_map = build_cpu_llc_map(iface.nr_cpus());
+	// Degenerate cache topology (e.g. KVM guests where every vCPU exposes
+	// its own L3 instance): waker-LLC routing then degenerates into
+	// per-wake CPU bouncing and inflates migrations. Detect and fall back
+	// to a single cache domain.
+	if (!llc_map.empty()) {
+		std::set<uint32_t> domains;
+		for (auto &kv : llc_map)
+			domains.insert(kv.second);
+		if (domains.size() * 4 >= (size_t)iface.nr_cpus() * 3) {
+			log(LogLevel::Warn,
+			    "degenerate LLC topology (%zu domains / %d cpus); "
+			    "disabling waker-LLC routing (single cache domain)",
+			    domains.size(), iface.nr_cpus());
+			for (auto &kv : llc_map)
+				kv.second = 0;
+			settings.llc_affinity = false;
+		}
+	}
 	if (!dry_run) {
 		for (auto &kv : llc_map)
 			iface.cpu_llc_set(kv.first, kv.second);
@@ -600,7 +630,8 @@ int main(int argc, char **argv)
 	Classifier classifier(ClassifierSettings{
 		settings.alpha, settings.wake_hi, settings.run_lo_ns,
 		settings.delay_lo_ns, settings.ipc_hi, settings.mpki_hi,
-		settings.hysteresis_cycles, settings.classify_pmu });
+		settings.hysteresis_cycles, settings.classify_pmu,
+		settings.lat_moderate });
 
 	std::map<uint32_t, Target> targets;
 	uint64_t start_ns = now_mono_ns();

@@ -29,6 +29,8 @@ UEI_DEFINE(uei);
 #define SP_DEF_BG_SLICE_NS    10000000ULL
 #define SP_DEF_PREEMPT_NS       500000ULL
 #define SP_DEF_MIGRATE_PEN_NS  2000000ULL
+#define SP_DEF_STARVE_NS      20000000ULL
+#define SP_MAX_MIG_PEN_NS      8000000ULL
 #define SP_DEF_BG_VTIME_PCT         200u
 #define SP_MAX_RUN_DELAY_NS  1000000000ULL
 
@@ -83,12 +85,13 @@ struct {
 	__uint(max_entries, SP_NR_STATS);
 } stats SEC(".maps");
 
-/* [0] = last preempt kick ns, [1] = cache/comp dispatch toggle */
+/* [0] = last preempt kick ns, [1] = cache/comp dispatch toggle,
+ * [2] = last non-LAT dispatch ns (anti-starvation guard) */
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(key_size, sizeof(u32));
 	__uint(value_size, sizeof(u64));
-	__uint(max_entries, 2);
+	__uint(max_entries, 3);
 } pcpu_state SEC(".maps");
 
 static u64 vtime_now_comp;
@@ -312,12 +315,18 @@ s32 BPF_STRUCT_OPS(schedpilot_select_cpu, struct task_struct *p, s32 prev_cpu,
 		return cpu;
 	}
 
-	if (klass == SP_CLASS_LAT && (flags & SP_FLAG_PREEMPT) && cpu >= 0) {
+	if ((flags & SP_FLAG_PREEMPT) && cpu >= 0 && klass != SP_CLASS_BG) {
 		u32 zero = 0;
 		u64 *last_kick = bpf_map_lookup_elem(&pcpu_state, &zero);
 		u64 now = bpf_ktime_get_ns();
 		u64 thr = (c && c->preempt_thresh_ns) ? c->preempt_thresh_ns
 						      : SP_DEF_PREEMPT_NS;
+
+		/* LAT wakes preempt aggressively; other classes use a wider
+		 * threshold so throughput-oriented tasks (DB sync threads)
+		 * still get prompt wakeups without a preemption storm. */
+		if (klass != SP_CLASS_LAT)
+			thr *= 4;
 
 		if (last_kick && (now - *last_kick) >= thr) {
 			*last_kick = now;
@@ -420,6 +429,13 @@ void BPF_STRUCT_OPS(schedpilot_running, struct task_struct *p)
 					  SP_DEF_MIGRATE_PEN_NS;
 
 			p->scx.dsq_vtime += pen * 100 / task_weight(p);
+			/* Cap accumulated migration penalty: a frequently
+			 * migrating task must not be buried far beyond the
+			 * current vtime watermark (starves its class). */
+			if (time_before(vtime_now_cache + SP_MAX_MIG_PEN_NS,
+					p->scx.dsq_vtime))
+				p->scx.dsq_vtime = vtime_now_cache +
+						   SP_MAX_MIG_PEN_NS;
 			stat_inc(SP_STAT_CACHE_MIGRATED);
 		}
 		tc->last_cpu = cpu;
@@ -484,14 +500,23 @@ static int dispatch_cache(s32 this_cpu)
 
 void BPF_STRUCT_OPS(schedpilot_dispatch, s32 cpu, struct task_struct *prev)
 {
-	u32 one = 1;
+	u32 one = 1, two_stat = 2;
 	u64 *toggle = bpf_map_lookup_elem(&pcpu_state, &one);
+	u64 *last_other = bpf_map_lookup_elem(&pcpu_state, &two_stat);
 	bool cache_first = !toggle || ((*toggle & 1) == 0);
 	bool moved = false;
+	struct sp_cfg *c = get_cfg();
+	u64 now = bpf_ktime_get_ns();
+	u64 starve = (c && c->starvation_ns) ? c->starvation_ns
+					     : SP_DEF_STARVE_NS;
+	/* LAT must not starve the throughput classes: if no non-LAT task
+	 * has been dispatched for a while, serve CACHE/COMP first. */
+	bool force_other = last_other &&
+			   (*last_other == 0 || (now - *last_other) >= starve);
 
 	stat_inc(SP_STAT_DISPATCH_CALLS);
 
-	if (scx_bpf_dsq_move_to_local(SP_DSQ_LAT)) {
+	if (!force_other && scx_bpf_dsq_move_to_local(SP_DSQ_LAT)) {
 		stat_inc(SP_STAT_DSP_LAT);
 		return;
 	}
@@ -515,6 +540,15 @@ void BPF_STRUCT_OPS(schedpilot_dispatch, s32 cpu, struct task_struct *prev)
 	if (moved) {
 		if (toggle)
 			*toggle ^= 1;
+		if (last_other)
+			*last_other = now;
+		return;
+	}
+
+	if (force_other && scx_bpf_dsq_move_to_local(SP_DSQ_LAT)) {
+		stat_inc(SP_STAT_DSP_LAT);
+		if (last_other)
+			*last_other = now;
 		return;
 	}
 

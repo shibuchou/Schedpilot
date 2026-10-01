@@ -64,8 +64,19 @@ $(BUILD_DIR)/schedpilotd: $(DAEMON_SRCS) | $(BUILD_DIR)
 	@echo "built $@"
 
 check:
-	@bash -n $(ROOT)/scripts/*.sh && echo "shell syntax OK"
-	@python3 -m py_compile $(ROOT)/bench/analyze_results.py && echo "python compile OK"
+	@bash -n $(ROOT)/scripts/*.sh $(ROOT)/bench/*.sh $(ROOT)/tests/*.sh && echo "shell syntax OK"
+	@python3 -m py_compile $(ROOT)/bench/analyze_results.py \
+		$(ROOT)/bench/parse_redis.py $(ROOT)/bench/parse_wrk.py \
+		$(ROOT)/bench/parse_mysql.py $(ROOT)/bench/reparse_results.py \
+		&& echo "python compile OK"
+	@$(MAKE) --no-print-directory test
+
+test: $(BUILD_DIR)/classifier_test
+	$(BUILD_DIR)/classifier_test
+
+$(BUILD_DIR)/classifier_test: $(ROOT)/tests/classifier_test.cpp \
+		$(ROOT)/daemon/classifier.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -I$(ROOT)/daemon $^ -o $@
 
 clean:
 	rm -rf $(BUILD_DIR)

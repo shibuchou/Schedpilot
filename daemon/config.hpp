@@ -147,6 +147,7 @@ struct DaemonSettings {
 	int interval_ms = 100;
 	bool policy_enabled = true;
 	bool classify_pmu = true;
+	bool lat_moderate = true;
 	bool llc_affinity = true;
 	bool bg_contain = true;
 	bool preempt = true;
@@ -172,6 +173,7 @@ struct DaemonSettings {
 		s.interval_ms = (int)cfg.get_long("policy.interval_ms", s.interval_ms);
 		s.policy_enabled = cfg.get_bool("policy.adaptive", s.policy_enabled);
 		s.classify_pmu = cfg.get_bool("policy.classify_pmu", s.classify_pmu);
+		s.lat_moderate = cfg.get_bool("classifier.lat_moderate", s.lat_moderate);
 		s.llc_affinity = cfg.get_bool("policy.llc_affinity", s.llc_affinity);
 		s.bg_contain = cfg.get_bool("policy.bg_contain", s.bg_contain);
 		s.preempt = cfg.get_bool("policy.preempt", s.preempt);

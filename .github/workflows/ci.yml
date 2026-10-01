@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang g++ make python3 libbpf-dev libelf-dev zlib1g-dev bpftool
+
+      - name: Shell syntax + Python compile checks
+        run: make check
+
+      - name: Userspace daemon build
+        run: make daemon
+
+      - name: Classifier unit tests
+        run: make test
+
+# NOTE: the BPF object build requires a kernel BTF with sched_ext types
+# (CONFIG_SCHED_CLASS_EXT=y). GitHub runners do not provide that, so the
+# BPF data plane is compile-verified on the target openEuler environment
+# via scripts/build.sh --kernel-src. Daemon + parsers + scripts are covered
+# here.

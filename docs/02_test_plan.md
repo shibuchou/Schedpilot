@@ -16,9 +16,14 @@
 - Workload：`redis-benchmark -t get -c 50`，请求数按预跑估算使稳态窗口 ≈ `--duration`；
   解析 REDIS 输出的 throughput summary（QPS）与 latency summary（avg/min/p50/p95/p99/max），
   p99.9 从 percentile distribution 段解析。
-- 干扰：**正式场景定义 v2（2026-09-30 起）**：`stress-ng --cpu 4 --cpu-method matrixprod --vm 2 --vm-bytes 1G`，
-  与 Redis 同 cpuset（0-3），在 4 核上形成真实超订竞争；客户端在 4-7，明确排除出分类目标。
-  formal-1 矩阵使用 v1（2 CPU + 1 VM）作为历史对照，正式验收使用 v2。
+- 干扰：**正式场景定义 v3（2026-10-01 起，统一口径）**：
+  `stress-ng --cpu 4 --cpu-method matrixprod --vm 2 --vm-bytes 1G` 与业务服务**同 CPU 集（0-3）**，
+  形成真实同核竞争；客户端固定在 4-7 并明确排除出分类目标。
+  - Redis：`redis-server` pinned 0-3（自始即为此口径，formal-2 即 v3 等效）；
+  - Nginx：master+workers pinned 0-3（`bench/abcd_experiment.sh` 自动设置）；
+  - MySQL：`mysqld` 全部线程 pinned 0-3（同上）。
+  - 历史数据：nginx-1/mysql-1（v2 浮动场景、修复前二进制）已被 scx watchdog 失速证据判定为受污染，
+    仅保留为缺陷证据（见 `docs/04_test_report.md` §6.9），不作为结论依据。
 - 无干扰回归：使用 `--no-interference` 单独跑 A/B/C/D。
 - 客户端隔离（单机模式强制）：`redis-benchmark` 固定到独立 CPU（如 `4-7`），
   并通过配置 `exclude_names` 明确排除出 SchedPilot 分类/调度目标，避免客户端调度变化污染结论。

@@ -36,6 +36,7 @@ struct ClassifierSettings {
 	double mpki_hi = 10.0;
 	int hysteresis_cycles = 5;
 	bool use_pmu = true;
+	bool lat_moderate = true; // moderate-wake + short-run -> L-SYNC
 };
 
 class Classifier {

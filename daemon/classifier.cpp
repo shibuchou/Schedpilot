@@ -35,6 +35,7 @@ ClassDecision Classifier::update(uint32_t tgid, const Features &f)
 {
 	State &st = states_[tgid];
 	ClassDecision d;
+	const bool first_update = !st.primed;
 
 	// EWMA over raw features; first observation primes the state.
 	auto ewma = [&](double &target, double raw) {
@@ -65,11 +66,19 @@ ClassDecision Classifier::update(uint32_t tgid, const Features &f)
 	 * instantaneous IPC/MPKI (which are noisy under interference and used
 	 * to cause M-BOUND flapping). IPC/MPKI only classify tasks that are
 	 * not wakeup-driven.
+	 *
+	 * Event-driven servers (e.g. nginx workers under keep-alive) may wake
+	 * at a lower rate than request-dispatched servers, so a secondary rule
+	 * accepts moderate wakeups combined with short runs and low wait.
 	 */
-	bool lat = f.sched_valid && st.wake >= s_.wake_hi;
+	bool lat = f.sched_valid &&
+		   (st.wake >= s_.wake_hi ||
+		    (s_.lat_moderate && st.wake >= s_.wake_hi / 5.0 &&
+		     st.run <= s_.run_lo_ns &&
+		     st.delay <= s_.delay_lo_ns * 4.0));
 
 	if (lat) {
-		double wake_margin = st.wake / std::max(1.0, s_.wake_hi);
+		double wake_margin = st.wake / std::max(1.0, s_.wake_hi / 5.0);
 		double run_bonus = st.run <= s_.run_lo_ns ? 0.10 : 0.0;
 		raw = SP_CLASS_LAT;
 		confidence = clamp01(0.65 + 0.15 * std::log2(std::max(
@@ -107,11 +116,11 @@ ClassDecision Classifier::update(uint32_t tgid, const Features &f)
 	}
 
 	// Hysteresis: a class change must hold for N consecutive cycles.
-	if (!st.primed && st.current == SP_CLASS_NORMAL &&
-	    st.candidate == SP_CLASS_NORMAL && st.streak == 0) {
-		// first ever classification for this task
+	if (first_update) {
+		// first ever classification for this task: latch immediately
 		st.current = raw;
 		st.candidate = raw;
+		st.streak = 0;
 		d.changed = raw != SP_CLASS_NORMAL;
 	} else if (raw == st.current) {
 		st.candidate = raw;

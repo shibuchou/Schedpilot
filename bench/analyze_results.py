@@ -19,15 +19,17 @@ import sys
 from collections import OrderedDict
 
 METRIC_KEYS = [
-    ("qps", "throughput (req/s)", True),
+    ("qps", "throughput (req/s / TPS)", True),
+    ("slo_goodput_rps", "goodput at fixed SLO (req/s)", True),
+    ("slo_pct", "requests within SLO (%)", True),
     ("p50_ms", "p50 latency (ms)", False),
     ("p95_ms", "p95 latency (ms)", False),
     ("p99_ms", "p99 latency (ms)", False),
     ("p999_ms", "p99.9 latency (ms)", False),
     ("csw", "context switches (perf stat)", False),
     ("migrations", "CPU migrations (perf stat)", False),
-    ("ipc", "Redis process IPC (perf stat)", True),
-    ("mpki", "Redis process LLC MPKI (perf stat)", False),
+    ("ipc", "process IPC (perf stat)", True),
+    ("mpki", "process LLC MPKI (perf stat)", False),
 ]
 
 T_TABLE = {
@@ -104,6 +106,8 @@ def load_runs(results):
                 primary = meta.get("primary", {})
                 row.update({
                     "qps": primary.get("rps"),
+                    "slo_goodput_rps": primary.get("slo_goodput_rps"),
+                    "slo_pct": primary.get("slo_pct"),
                     "p50_ms": primary.get("p50_ms"),
                     "p95_ms": primary.get("p95_ms"),
                     "p99_ms": primary.get("p99_ms"),
@@ -228,12 +232,16 @@ def main():
     if not baseline_rows:
         lines.append("**No baseline arm data found.**\n")
 
-    header = "| arm | n | QPS median [IQR] | QPS delta | p99 med (ms) | p99 delta | p99 delta 95% CI | p99 p-value |"
+    header = "| arm | n | QPS median [IQR] | QPS delta | goodput@SLO median | goodput delta | p99 med (ms) | p99 delta | p99 delta 95% CI | p99 p-value |"
     lines.append(header)
-    lines.append("|---|---|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|")
+
+    baseline_rows = arms.get(args.baseline, [])
+    bg = stats_for([r.get("slo_goodput_rps") for r in baseline_rows])
 
     for arm, rows in arms.items():
         qps = stats_for([r.get("qps") for r in rows])
+        gs = stats_for([r.get("slo_goodput_rps") for r in rows])
         p99 = stats_for([r.get("p99_ms") for r in rows])
         bq = stats_for([r.get("qps") for r in baseline_rows])
         bp = stats_for([r.get("p99_ms") for r in baseline_rows])
@@ -272,6 +280,7 @@ def main():
             f"| {arm} | {qps.get('n', 0)} | "
             f"{fmt(qps.get('median'))} [{fmt(qps.get('iqr'))}] | "
             f"{pct(qps, bq)} | "
+            f"{fmt(gs.get('median'))} | {pct(gs, bg)} | "
             f"{fmt(p99.get('median'))} [{fmt(p99.get('iqr'))}] | "
             f"{pct(p99, bp)} | {ci} | {pval} |")
 

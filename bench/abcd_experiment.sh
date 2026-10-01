@@ -25,16 +25,18 @@ ARMS="A,B,C,D"
 SERVER_CPUS="0-3"
 CLIENT_CPUS="4-7"
 INTERFERENCE_CPUS="0-3"
-PORT=6399
+PORT=""
 NO_INTERFERENCE=0
 SKIP_ANALYZE=0
-CONFIG="$ROOT/configs/redis.conf"
+CONFIG=""
+WORKLOAD="redis"
 IF_CPU_WORKERS=4
 IF_VM_WORKERS=2
 IF_VM_BYTES="1G"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
+	--workload) WORKLOAD="$2"; shift 2 ;;
 	--runs) RUNS="$2"; shift 2 ;;
 	--duration) DURATION="$2"; shift 2 ;;
 	--warmup) WARMUP="$2"; shift 2 ;;
@@ -55,35 +57,88 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
+# Per-workload defaults (redis | nginx | mysql)
+case "$WORKLOAD" in
+nginx)
+	[ -n "$PORT" ] || PORT=8080
+	[ -n "$CONFIG" ] || CONFIG="$ROOT/configs/nginx.conf"
+	;;
+mysql)
+	[ -n "$PORT" ] || PORT=3307
+	[ -n "$CONFIG" ] || CONFIG="$ROOT/configs/mysql.conf"
+	;;
+*)
+	WORKLOAD=redis
+	[ -n "$PORT" ] || PORT=6399
+	[ -n "$CONFIG" ] || CONFIG="$ROOT/configs/redis.conf"
+	;;
+esac
+
 [ -n "$RESULTS" ] || RESULTS="$ROOT/results/$(hostname)-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$RESULTS"
-echo "[exp] results=$RESULTS runs=$RUNS duration=${DURATION}s warmup=${WARMUP}s arms=$ARMS"
+echo "[exp] results=$RESULTS workload=$WORKLOAD port=$PORT runs=$RUNS duration=${DURATION}s warmup=${WARMUP}s arms=$ARMS"
 
-# ---------- environment + redis server ----------
+# ---------- environment + workload server ----------
 "$ROOT/scripts/env_check.sh" --label "$(basename "$RESULTS")" \
 	--json "$RESULTS/env_check.json" >"$RESULTS/env_check.log" 2>&1 || true
 
-REDIS_LOG="$RESULTS/redis-server.log"
-mkdir -p /tmp/schedpilot-redis
-taskset -c "$SERVER_CPUS" redis-server "$ROOT/bench/redis-schedpilot.conf" \
-	--port "$PORT" >"$REDIS_LOG" 2>&1 &
-REDIS_PID=$!
-for _ in $(seq 1 30); do
-	redis-cli -p "$PORT" ping >/dev/null 2>&1 && break
-	sleep 0.5
-done
-redis-cli -p "$PORT" ping >/dev/null 2>&1 || { echo "[FAIL] redis-server did not start" >&2; exit 1; }
-echo "[exp] redis-server pid=$REDIS_PID port=$PORT cpus=$SERVER_CPUS"
+SERVER_PID=""
+EXT_PID=""
+case "$WORKLOAD" in
+redis)
+	mkdir -p /tmp/schedpilot-redis
+	taskset -c "$SERVER_CPUS" redis-server "$ROOT/bench/redis-schedpilot.conf" \
+		--port "$PORT" >"$RESULTS/redis-server.log" 2>&1 &
+	SERVER_PID=$!
+	for _ in $(seq 1 30); do
+		redis-cli -p "$PORT" ping >/dev/null 2>&1 && break
+		sleep 0.5
+	done
+	redis-cli -p "$PORT" ping >/dev/null 2>&1 || { echo "[FAIL] redis-server did not start" >&2; exit 1; }
+	;;
+nginx)
+	mkdir -p /tmp/schedpilot-www
+	echo "schedpilot-nginx-benchmark-payload-0123456789" >/tmp/schedpilot-www/index.html
+	nginx -c "$ROOT/bench/nginx-schedpilot.conf" 2>"$RESULTS/nginx-start.log" || {
+		echo "[FAIL] nginx did not start" >&2; exit 1; }
+	SERVER_PID="$(pgrep -f 'nginx: master process' | head -n1 || true)"
+	for _ in $(seq 1 30); do
+		curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break
+		sleep 0.5
+	done
+	# Scenario v3: server and interference share the same CPU set
+	# (co-location); the benchmark client stays isolated on CLIENT_CPUS.
+	for p in $(pgrep -x nginx); do
+		taskset -pc "$SERVER_CPUS" "$p" >/dev/null 2>&1 || true
+	done
+	;;
+mysql)
+	pgrep -x mysqld >/dev/null 2>&1 || mysqld --defaults-file=/etc/schedpilot-mysql.cnf --daemonize 2>"$RESULTS/mysql-start.log"
+	SERVER_PID="$(pgrep -x mysqld | head -n1 || true)"
+	for _ in $(seq 1 30); do
+		mysqladmin --defaults-file=/etc/schedpilot-mysql.cnf ping >/dev/null 2>&1 && break
+		sleep 0.5
+	done
+	mysqladmin --defaults-file=/etc/schedpilot-mysql.cnf ping >/dev/null 2>&1 || {
+		echo "[FAIL] mysqld did not start" >&2; exit 1; }
+	# Scenario v3: mysqld threads co-located with interference on SERVER_CPUS.
+	[ -n "$SERVER_PID" ] && taskset -apc "$SERVER_CPUS" "$SERVER_PID" >/dev/null 2>&1 || true
+	;;
+esac
+echo "[exp] workload=$WORKLOAD server_pid=${SERVER_PID:-none} port=$PORT"
 
 cleanup() {
 	echo "[exp] cleanup"
 	"$ROOT/bench/interference.sh" stop >/dev/null 2>&1 || true
 	"$ROOT/scripts/schedpilotctl.sh" stop >/dev/null 2>&1 || true
-	kill "$REDIS_PID" 2>/dev/null || true
-	rm -f "$RESULTS/redis-server.pid"
+	[ -n "${EXT_PID:-}" ] && kill "$EXT_PID" 2>/dev/null || true
+	case "$WORKLOAD" in
+	redis) [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true ;;
+	nginx) nginx -s stop -c "$ROOT/bench/nginx-schedpilot.conf" >/dev/null 2>&1 || true ;;
+	mysql) mysqladmin --defaults-file=/etc/schedpilot-mysql.cnf shutdown >/dev/null 2>&1 || true ;;
+	esac
 }
 trap cleanup EXIT INT TERM
-echo "$REDIS_PID" >"$RESULTS/redis-server.pid"
 
 cat >"$RESULTS/experiment.meta.json" <<EOF
 {
@@ -101,8 +156,9 @@ cat >"$RESULTS/experiment.meta.json" <<EOF
   "interference_cpu_workers": $IF_CPU_WORKERS,
   "interference_vm_workers": $IF_VM_WORKERS,
   "interference_vm_bytes": "$IF_VM_BYTES",
-  "redis_port": $PORT,
-  "redis_config": "$CONFIG",
+  "workload": "$WORKLOAD",
+  "port": $PORT,
+  "config": "$CONFIG",
   "baseline_note": "Baseline is the openEuler default fair-class scheduler (competition text: default CFS); Linux 6.6 fair-class internals are not assumed identical to mainline classic CFS.",
   "git_commit": "$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
 }
@@ -110,6 +166,7 @@ EOF
 
 setup_arm() {
 	local arm="$1" out="$2"
+	EXT_PID=""
 	mkdir -p "$out/logs"
 	case "$arm" in
 	A)
@@ -132,6 +189,16 @@ setup_arm() {
 		;;
 	d-no-bg)
 		"$ROOT/scripts/schedpilotctl.sh" start --mode adaptive --config "$CONFIG" --policy on --log-dir "$out/logs" --ablation bg_contain=0
+		;;
+	d-no-preempt)
+		"$ROOT/scripts/schedpilotctl.sh" start --mode adaptive --config "$CONFIG" --policy on --log-dir "$out/logs" --ablation preempt=0
+		;;
+	X-simple|X-flatcg)
+		"$ROOT/scripts/schedpilotctl.sh" stop >/dev/null 2>&1
+		local extbin="$ROOT/build/external/$arm"
+		[ -x "$extbin" ] || { echo "[FAIL] external scheduler missing: $extbin" >&2; exit 1; }
+		nohup "$extbin" >"$out/external.log" 2>&1 &
+		EXT_PID=$!
 		;;
 	*)
 		echo "[FAIL] unknown arm: $arm" >&2; exit 1
@@ -157,11 +224,13 @@ for run in $(seq 1 "$RUNS"); do
 		mkdir -p "$out"
 		echo "[exp] run=$run arm=$arm out=$out"
 		setup_arm "$arm" "$out" >"$out/setup.log" 2>&1
-		redis-cli -p "$PORT" flushall >/dev/null 2>&1 || true
+		if [ "$WORKLOAD" = "redis" ]; then
+			redis-cli -p "$PORT" flushall >/dev/null 2>&1 || true
+		fi
 
 		EXTRA=()
 		[ "$NO_INTERFERENCE" = "1" ] && EXTRA+=(--no-interference)
-		"$ROOT/bench/run_redis.sh" \
+		"$ROOT/bench/run_${WORKLOAD}.sh" \
 			--arm "$arm" --run-id "$run" --out "$out" \
 			--server-cpus "$SERVER_CPUS" --client-cpus "$CLIENT_CPUS" \
 			--interference-cpus "$INTERFERENCE_CPUS" \
@@ -171,15 +240,24 @@ for run in $(seq 1 "$RUNS"); do
 			--port "$PORT" --duration "$DURATION" --warmup "$WARMUP" \
 			"${EXTRA[@]}" >"$out/run.stdout" 2>&1
 
+		if [ -n "${EXT_PID:-}" ]; then
+			kill "$EXT_PID" 2>/dev/null || true
+			EXT_PID=""
+		fi
+
 		python3 - "$out" "$arm" "$run" <<'PY' >"$out/meta.json"
 import json, os, sys
 out, arm, run = sys.argv[1], sys.argv[2], sys.argv[3]
 meta = {"arm": arm, "run": int(run), "out": out}
-try:
-    summary = json.load(open(os.path.join(out, "redis_summary.json")))
-    meta["primary"] = summary.get("primary_data", {})
-except Exception as e:
-    meta["error"] = str(e)
+for name in ("summary.json", "redis_summary.json"):
+    path = os.path.join(out, name)
+    if os.path.exists(path):
+        try:
+            summary = json.load(open(path))
+            meta["primary"] = summary.get("primary_data", {})
+        except Exception as e:
+            meta["error"] = str(e)
+        break
 print(json.dumps(meta, indent=2))
 PY
 

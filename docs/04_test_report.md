@@ -250,3 +250,69 @@ Pipeline 全通：`bench/abcd_experiment.sh` 自动完成 A/B/C/D 交织、干�
    - 混部场景（v2）：D vs A **吞吐 +116.9%（p<0.0001）**，达标；
    - 无干扰回归：C/D 吞吐 ±2% 内、p99 -13.2%，达标；
    - 可归因：B/C/D 递进 + 3 组消融 + 迁移/分类/策略日志齐全。
+
+### 6.9 三负载矩阵、外部对照与最终修复（2026-10-01）
+
+**本轮修复（全部为实验暴露的真实 bug/缺陷）**：
+
+| # | 问题 | 修复 |
+|---|---|---|
+| 1 | `exclude_names` 前缀匹配误排除 `mysqld`（"mysql" 前缀命中），MySQL 全程无分类 | 排除列表改为精确匹配 |
+| 2 | BG 任务从未真正标记（stress-ng 不在 targets 中，`bg` 名单被忽略） | 扫描时纳入 `targets ∪ bg` |
+| 3 | VM 缓存拓扑退化（每 vCPU 一个 L3 域），waker-LLC 路由导致迁移风暴 | daemon 检测退化拓扑并关闭该路由 |
+| 4 | 分类器首次分类要等滞回（`st.primed` 置位顺序 bug） | `first_update` 立即锁定 |
+| 5 | `mysqld` 被中度唤醒规则误判 L-SYNC → 短切片，TPS 减半 | 新增 `classifier.lat_moderate`，mysql.conf 关闭 |
+| 6 | 非 LAT 任务无唤醒抢占（DB 同步线程唤醒延迟高） | 非 LAT 也支持唤醒预抢占（4× 阈值） |
+| 7 | Nginx/MySQL 服务未与干扰共置（漂移逃逸），与 Redis 口径不一致 | **场景 v3**：服务与干扰同 CPU 集（0-3），客户端隔离 4-7 |
+| 8 | LAT 可能饿死 CACHE/COMP | 非 LAT DSQ 超过 `starvation_ns`(20ms) 未派发则优先服务 |
+| 9 | CACHE 迁移惩罚无上限累积，频繁迁移任务被 vtime 埋没（Nginx p99 异常） | 惩罚上限：vtime 不超过水位 +8ms |
+
+**场景 v3 正式矩阵结果**：
+
+| 负载 | 实验 | 最佳 arm | 相对 A | 统计 |
+|---|---|---|---|---|
+| Redis | formal-2（7 臂×20×60s） | **D** | **QPS +116.9%**，goodput@SLO(5ms) +116.5% | p<0.0001 |
+| MySQL | mysql-2（4 臂×20×60s） | **D** | **TPS +62.4%**，p99 **−77.2%**（12.75ms vs 55.8ms） | p<0.0001 |
+| Nginx | nginx-2（4 臂×20×60s） | **B（推荐模式）** | **QPS +43.8%**，p99 **−37.7%** | p<0.0001 |
+
+归因补充：
+- MySQL：sched_ext 本身 +20.9%；分类再 +33.7%（C vs B）；自适应 +0.4%。
+- Nginx：sched_ext 本身 +43.8%/−37.7%（B）；分类（C vs B）+42.3% 吞吐但 p99 +2173%（限制，见下）。
+
+**外部对照（ext-1，Redis 场景 v3，10×60s）**：
+
+| 调度器 | QPS Δ | p99 Δ |
+|---|---|---|
+| B（SchedPilot basic） | +67.8% | +6.1% |
+| D（SchedPilot full） | **+118.9%** | +1.3% |
+| X-flatcg（内核树示例） | +1.8% | +0.0% |
+| X-simple（内核树示例） | **−49.7%** | **+350.6%** |
+
+通用示例调度器在该混部场景下无效甚至有害，验证了场景化分类/自适应设计的价值。
+
+**看门狗与稳定性证据（重要）**：
+
+- **修复前二进制期间出现真实失速**：dmesg 记录 `BPF scheduler "schedpilot" disabled (runnable task stall)`，
+  nginx-1 窗口 **15 次**、mysql-1 窗口 **45 次**（单任务被卡 30s+ 后由内核 `scx_watchdog_workfn` 强制卸载调度器）。
+  **因此 nginx-1 / mysql-1 矩阵判定为受污染、不作为任何结论依据**（此前它们只被当作“场景 v2 负结果”，现更正为无效数据 + 真实缺陷证据）。
+- **修复后清零**：ext-1、**nginx-2（80 轮）**、**mysql-2（80 轮）**、30 分钟 soak（97 周期）窗口内
+  `schedpilot` 失速/看门狗次数均为 **0**；fault injection 6/6 通过。
+- 外部对照：同一场景下内核树示例 `flatcg` 被看门狗卸载 **10 次**（任务卡 30–44s），`simple` 未卸载但吞吐减半、p99 +350%。
+
+**已知限制（如实记录）**：
+
+1. **Nginx 分类模式（C/D）在干净的 nginx-2 矩阵中仍有 p99 恶化**：C 158.7ms / D 73.6ms（A 11.2ms），
+   且 nginx-2 窗口内无任何 watchdog 事件——该尾延迟问题独立于失速缺陷，根因是频繁迁移任务与类 DSQ 路由的交互，
+   已有缓解（迁移惩罚上限 + 抗饥饿守卫）但未根治。**推荐部署：Nginx 使用 `--mode basic`（B：+43.8% QPS、p99 −37.7%，
+   p<0.0001）**；分类模式下的 Nginx 尾延迟优化列为 P1。
+2. **二进制修订差异**：formal-2/noif-1/ext-1 与 nginx-2/mysql-2 使用修复过程中不同 revision 的产物；
+   每次实验记录 `git_commit`，二进制 SHA256 以 VM `build/` 为准（见证据索引说明）。
+3. 物理 SP4（192.168.1.123）截至本报告仍离线，全部实验在自建 SP4 KVM 虚拟机（6.6.0-schedpilot）完成；
+   正式提交前如需物理机复测，按 `docs/02_test_plan.md` 同样矩阵执行。
+
+**故障注入（tests/test_fault_injection.sh）**：6/6 PASS
+（loader kill → 自动 detach；daemon crash → 调度器保持 enabled 且心跳过期；daemon 重启 → 心跳恢复；rollback 正常）。
+
+**长稳（tests/test_soak.sh，D 臂 + 干扰持续压测）**：
+30 分钟轮（97 周期，errors=0）与修正异常检测器后的 15 分钟轮（49 周期，**watchdog_hits=0**，最终 state=enabled，SOAK PASS）均通过；
+证据见 VM `results/soak-final/` 与 `results/soak-final2/`。
