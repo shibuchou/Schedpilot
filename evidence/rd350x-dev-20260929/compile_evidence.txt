@@ -1,0 +1,11 @@
+date: 2026-09-29T08:06:06+00:00
+host: rd350x
+kernel: 6.8.0-51-generic
+clang: Ubuntu clang version 18.1.3 (1ubuntu1)
+libbpf: 1.3.0
+bpftool: bpftool v7.4.0
+vmlinux_h_btf_source: Ubuntu mainline 6.14.11 (kernel.ubuntu.com deb, BTF extracted via extract-vmlinux + bpftool btf dump)
+
+964aaaf53b5077b018ea12a27694444641bc70dcaf7a627e129c74dfafea1225  build/scx_schedpilot.bpf.o
+56990f86d3d90f8196f9a57c6b8f06256464e46ab28e65d037d6c3fd0029a912  build/scx_schedpilot
+2ea93280ceec364998fad697e09a0dba0f4b2f2f1a59aac2e839ae02a95d8166  build/schedpilotd

@@ -1,0 +1,7 @@
+build/
+logs/
+results/
+*.o
+*.skel.h
+__pycache__/
+*.pyc
