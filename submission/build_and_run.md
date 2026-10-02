@@ -41,15 +41,25 @@ scripts/setup_mysql.sh
 ## 复现正式实验
 
 ```bash
+# Redis 主矩阵（冻结版；自动记录 git commit / 内核 / 二进制 SHA256，
+# 逐臂校验调度器状态，默认 fail-fast 且污染轮次判定无效）
 bench/abcd_experiment.sh --workload redis --runs 20 --duration 60 --warmup 10 \
-  --arms A,B,C,D,d-no-pmu,d-no-llc,d-no-bg --results results/formal-2
-python3 bench/analyze_results.py --results results/formal-2 --baseline A
-# Nginx / MySQL:
+  --arms A,B,C,D,d-no-pmu,d-no-llc,d-no-bg --results results/formal-3
+python3 bench/analyze_results.py --results results/formal-3 --baseline A
+
+# Nginx：推荐部署入口 + 回归测试（basic 模式为实测最优）
+scripts/deploy_nginx.sh
+tests/test_nginx_basic.sh
 bench/abcd_experiment.sh --workload nginx --runs 20 --duration 60 --warmup 10 \
-  --arms A,B,C,D --results results/nginx-1
+  --arms A,B --results results/nginx-3
+
+# MySQL（先跑 scripts/setup_mysql.sh 准备环境）
 bench/abcd_experiment.sh --workload mysql --runs 20 --duration 60 --warmup 10 \
-  --arms A,B,C,D --results results/mysql-1
+  --arms A,B,C,D --results results/mysql-2
 ```
+
+分析输出含逐轮配对复算（mean Δ%、95% CI、更高/更低轮数）；`summary.md` 的配对表是
+最终统计口径（`p` 值列仅对 p99 的 Mann-Whitney，不用于吞吐结论）。
 
 ## 测试
 
