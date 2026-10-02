@@ -22,6 +22,10 @@
   并把自适应 `lat_slice` 推向下限 0.3ms。修复：`bg_slice_ns` 默认 10ms→2ms（loader+BPF），
   同时回退 anti-starvation 守卫（恢复 LAT-first 不变式）。pilot-8：D 49665 QPS / p99 2.83ms
   vs B 29228 QPS / p99 4.68ms。正式复跑 `formal-4`/`nginx-4`/`mysql-3` 见测试报告 §6.10。
+- **冻结复跑结果（commit `be962b8`，0 无效轮次）**：Redis formal-4 **D +172.5% QPS（配对 +169.8% [164.4,175.2]，20/20）、p99 −34.7%**；
+  MySQL mysql-3 **D +83.8% TPS（配对 +85.2% [62.0,108.3]，10/10）、p99 −74.8%**；
+  Nginx nginx-4 basic **B +42.4% QPS（配对 +50.1% [35.1,65.2]，20/20）、p99 −34.1%（17/20）**。
+  formal-3 回归数据与根因链、归档 SHA256 见 §6.10。
 
 ## v0.3.0-mvp — 省赛最小闭环（2026-09-29 → 2026-10-01）
 

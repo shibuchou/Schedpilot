@@ -1,8 +1,9 @@
 # SchedPilot v0.3 省赛 MVP 范围与验收
 
 更新时间：2026-09-29；收口更新：2026-10-02
-状态：**已完成**（v0.3.0-mvp：Redis/MySQL/Nginx 三负载矩阵、消融归因、故障注入、长稳、CI、双平台仓库同步；
-冻结版证据与配对统计见 `docs/04_test_report.md` §6.10）
+状态：**已完成**（v0.3.1：Redis/MySQL/Nginx 三负载冻结矩阵（commit `be962b8`，0 无效轮次）、消融归因、
+formal-3 回归的发现与修复、故障注入、长稳、CI、双平台仓库同步；
+冻结版证据、跳过无效轮次/统计与归档 SHA256 见 `docs/04_test_report.md` §6.10 与 `submission/evidence_index.md`）
 
 ## 1. MVP 范围（必做，阻塞项）
 

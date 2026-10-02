@@ -16,3 +16,11 @@
     - `env_check.json`
 
 约定：报告中的每个数字都必须能回溯到某个 run 目录中的原始文件；缺失数据一律标注“未执行”，不做推算填充。
+
+## 冻结归档（2026-10-02）
+
+- 冻结矩阵 `formal-4` / `mysql-3` / `nginx-4`（commit `be962b8`）与回归证据 `formal-3`、佐证 `nginx-3`
+  的关键摘要归档在 `sp4-vm/<experiment>/`（`summary.md/summary.csv/per_run.csv/experiment.meta.json/env_check.*`）。
+- 完整原始数据以 `*.tar.gz` 归档（sha256 见 `submission/evidence_index.md`），存放于实验机 `/root/`
+  与本机 `D:\code\Ubuntu\raw-archive\`；仓库不随附大文件，只记录哈希与位置。
+- `sp4-vm/` 下每个实验目录同时保留当时的函数级证据元数据（内核/commit/二进制 SHA256/场景），归档只追加。

@@ -11,18 +11,43 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 | SP4 VM 能力探测（OS/kernel/config/BTF/sched_ext/工具链/PMU） | `evidence/sp4-vm/env_check.json` |
 | 开发机编译验证（rd350x） | `evidence/rd350x-dev-20260929/` |
 
-## 最终正式矩阵（场景 v3）
+## 最终正式矩阵（场景 v3，冻结提交 `be962b8`，0 无效轮次）
+
+| 实验 | 内容 | 位置 | 结论（配对逐轮复算） |
+|---|---|---|---|
+| **formal-4** | Redis 7 臂 × 20 × 60s | `evidence/sp4-vm/formal-4/` | **D QPS +169.8% [+164.4, +175.2]，20/20 轮更高**；goodput@SLO +170.2%；p99 −34.7% |
+| **mysql-3** | MySQL 4 臂 × 10 × 60s | `evidence/sp4-vm/mysql-3/` | **D TPS +85.2% [+62.0, +108.3]，10/10**；p99 −74.8% [−82.4, −67.3] |
+| **nginx-4** | Nginx A,B × 20 × 60s | `evidence/sp4-vm/nginx-4/` | **B QPS +50.1% [+35.1, +65.2]，20/20**；p99 −34.1% [−43.5, −24.6]，17/20 轮更低（推荐 basic） |
+
+各实验的完整原始数据（每次运行的 workload 输出 / perf stat / daemon JSONL / cfg / 调度器状态 / dmesg）
+保存在实验机的 `results/<experiment>/` 目录；本仓库 `evidence/sp4-vm/` 归档关键摘要（summary/meta/per_run/env_check）。
+
+## 冻结归档（原始 tar.gz，SHA256）
+
+归档存放于实验机 `/root/` 与本机 `D:\code\Ubuntu\raw-archive\`（仓库仅存摘要与哈希）：
+
+| 归档 | 大小 (bytes) | SHA256 |
+|---|---|---|
+| formal-4-raw.tar.gz | 9874464 | `a19897bb02bc33df66d47b4a0702982d3308683ec45ea3ef4b9de232de278ac7` |
+| mysql-3-raw.tar.gz | 1819807 | `1268cbbe64698bbea623d305e1366a0b10b63c0c90c5a82860563b40b313b137` |
+| nginx-4-raw.tar.gz | 86662 | `3b56941af02b2e5af55ad0f41fed131ebfa722f35b8ab4699aaea1021216c6aa` |
+| formal-3-raw.tar.gz（回归证据） | 18880184 | `d494f2929101ac75acb7934f92b86fc28cc0b49fd5a9c251906ceebb525746cd` |
+| nginx-3-raw.tar.gz（冻结佐证） | 86091 | `5b4ae91c71a77a6ec51ebb51d0abaf94d9b9c3455ba8abd70cd2b2bf0853f82b` |
+
+二进制 SHA256（三实验一致，见各自 `experiment.meta.json`）：
+`scx_schedpilot` `9d1e904ff9ba9dd2ea6aa593a2be1720538a90c489d78d70d12fbf8f54cfd09f`、
+`schedpilotd` `d02d4e0d8ae0cb77a5af98ee0be46adeda0a4575f6ef30c037d5bbb945d46e6a`、
+`bpf_object` `a204183ae31cad8df960fb12e9c240797fdcbb8928a46f462ce059e00f35d206`。
+
+## 冻结前历史矩阵（保留，作为方法学对照）
 
 | 实验 | 内容 | 位置 | 结论 |
 |---|---|---|---|
-| **formal-2** | Redis 7 臂 × 20 × 60s | `evidence/sp4-vm/formal-2/` | **D +116.9% QPS**（p<0.0001）、goodput@SLO +116.5% |
-| **mysql-2** | MySQL 4 臂 × 20 × 60s | `evidence/sp4-vm/mysql-2/` | **D +62.4% TPS、p99 −77.2%**（p<0.0001） |
-| **nginx-2** | Nginx 4 臂 × 20 × 60s | `evidence/sp4-vm/nginx-2/` | **B +43.8% QPS、p99 −37.7%**（p<0.0001，推荐模式） |
-| **noif-1** | Redis 无干扰 4 臂 × 10 × 60s | `evidence/sp4-vm/noif-1/` | C/D 吞吐 ±2% 内、p99 −13.2% |
-| **ext-1** | Redis 外部对照 5 臂 × 10 × 60s | `evidence/sp4-vm/ext-1/` | D +118.9%；scx_simple −49.7%（p99 +350%）；scx_flatcg +1.8% |
-
-各实验的完整原始数据（每次运行的 workload 输出 / perf stat / daemon JSONL / cfg / 调度器状态 / dmesg）
-保存在实验机的 `results/<experiment>/` 目录；本仓库 `evidence/sp4-vm/` 归档关键摘要（summary/meta/per_run）。
+| formal-2 | Redis 7 臂 × 20 × 60s | `evidence/sp4-vm/formal-2/` | D +116.9% QPS、goodput@SLO +116.5%（`git_commit` 非最终提交） |
+| mysql-2 | MySQL 4 臂 × 20 × 60s | `evidence/sp4-vm/mysql-2/` | D +62.4% TPS、p99 −77.2% |
+| nginx-2 | Nginx 4 臂 × 20 × 60s | `evidence/sp4-vm/nginx-2/` | B +43.8% QPS、p99 −37.7%（推荐模式） |
+| noif-1 | Redis 无干扰 4 臂 × 10 × 60s | `evidence/sp4-vm/noif-1/` | C/D 吞吐 −2.0%（10/10 轮为负）、p99 −12.7% |
+| ext-1 | Redis 外部对照 5 臂 × 10 × 60s | `evidence/sp4-vm/ext-1/` | D +118.9%；scx_simple −49.7%（p99 +350%）；scx_flatcg +1.8% |
 
 ## 缺陷与无效数据（如实记录）
 

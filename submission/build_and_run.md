@@ -40,22 +40,25 @@ scripts/setup_mysql.sh
 
 ## 复现正式实验
 
+冻结矩阵 commit：`be962b8a4f093e4c23396d7ce78afc57b866b234`（`git checkout be962b8` 后按 `scripts/build.sh` 构建；
+预期结果与二进制 SHA256 见 `docs/04_test_report.md` §6.10 与 `submission/evidence_index.md`）。
+
 ```bash
 # Redis 主矩阵（冻结版；自动记录 git commit / 内核 / 二进制 SHA256，
 # 逐臂校验调度器状态，默认 fail-fast 且污染轮次判定无效）
 bench/abcd_experiment.sh --workload redis --runs 20 --duration 60 --warmup 10 \
-  --arms A,B,C,D,d-no-pmu,d-no-llc,d-no-bg --results results/formal-3
-python3 bench/analyze_results.py --results results/formal-3 --baseline A
+  --arms A,B,C,D,d-no-pmu,d-no-llc,d-no-bg --results results/formal-4
+python3 bench/analyze_results.py --results results/formal-4 --baseline A
 
 # Nginx：推荐部署入口 + 回归测试（basic 模式为实测最优）
 scripts/deploy_nginx.sh
 tests/test_nginx_basic.sh
 bench/abcd_experiment.sh --workload nginx --runs 20 --duration 60 --warmup 10 \
-  --arms A,B --results results/nginx-3
+  --arms A,B --results results/nginx-4
 
 # MySQL（先跑 scripts/setup_mysql.sh 准备环境）
-bench/abcd_experiment.sh --workload mysql --runs 20 --duration 60 --warmup 10 \
-  --arms A,B,C,D --results results/mysql-2
+bench/abcd_experiment.sh --workload mysql --runs 10 --duration 60 --warmup 10 \
+  --arms A,B,C,D --results results/mysql-3
 ```
 
 分析输出含逐轮配对复算（mean Δ%、95% CI、更高/更低轮数）；`summary.md` 的配对表是
