@@ -26,7 +26,7 @@ UEI_DEFINE(uei);
 #define SP_DEF_LAT_SLICE_NS    1000000ULL
 #define SP_DEF_COMP_SLICE_NS   4000000ULL
 #define SP_DEF_CACHE_SLICE_NS  8000000ULL
-#define SP_DEF_BG_SLICE_NS    10000000ULL
+#define SP_DEF_BG_SLICE_NS     2000000ULL
 #define SP_DEF_PREEMPT_NS       500000ULL
 #define SP_DEF_MIGRATE_PEN_NS  2000000ULL
 #define SP_DEF_STARVE_NS      20000000ULL
@@ -511,23 +511,23 @@ static int dispatch_cache(s32 this_cpu)
 
 void BPF_STRUCT_OPS(schedpilot_dispatch, s32 cpu, struct task_struct *prev)
 {
-	u32 one = 1, two_stat = 2;
+	u32 one = 1;
 	u64 *toggle = bpf_map_lookup_elem(&pcpu_state, &one);
-	u64 *last_other = bpf_map_lookup_elem(&pcpu_state, &two_stat);
 	bool cache_first = !toggle || ((*toggle & 1) == 0);
 	bool moved = false;
-	struct sp_cfg *c = get_cfg();
-	u64 now = bpf_ktime_get_ns();
-	u64 starve = (c && c->starvation_ns) ? c->starvation_ns
-					     : SP_DEF_STARVE_NS;
-	/* LAT must not starve the throughput classes: if no non-LAT task
-	 * has been dispatched for a while, serve CACHE/COMP first. */
-	bool force_other = last_other &&
-			   (*last_other == 0 || (now - *last_other) >= starve);
 
 	stat_inc(SP_STAT_DISPATCH_CALLS);
 
-	if (!force_other && scx_bpf_dsq_move_to_local(SP_DSQ_LAT)) {
+	/*
+	 * Invariant: LAT dispatches before all throughput classes. A former
+	 * anti-starvation guard that served BG/COMP before LAT was removed
+	 * after formal-3 regression analysis: a rate-limited LAT wake can
+	 * only preempt the victim at its next scheduling point, so LAT p99
+	 * is bounded by the victim's slice. That is why the default BG slice
+	 * was reduced from 10ms to 2ms (see SP_DEF_BG_SLICE_NS): BG stays
+	 * contained via its vtime penalty while LAT waits stay short.
+	 */
+	if (scx_bpf_dsq_move_to_local(SP_DSQ_LAT)) {
 		stat_inc(SP_STAT_DSP_LAT);
 		return;
 	}
@@ -551,15 +551,6 @@ void BPF_STRUCT_OPS(schedpilot_dispatch, s32 cpu, struct task_struct *prev)
 	if (moved) {
 		if (toggle)
 			*toggle ^= 1;
-		if (last_other)
-			*last_other = now;
-		return;
-	}
-
-	if (force_other && scx_bpf_dsq_move_to_local(SP_DSQ_LAT)) {
-		stat_inc(SP_STAT_DSP_LAT);
-		if (last_other)
-			*last_other = now;
 		return;
 	}
 

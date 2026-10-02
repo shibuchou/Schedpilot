@@ -25,13 +25,13 @@
 10. **验收目标**：真实 ACTIVE sched_ext policy 下，相比同环境 default fair baseline，Redis 混部场景 P99 降低 ≥10% 或固定 P99 SLO 下有效吞吐提高 ≥10%，并可通过 map、DSQ dispatch、分类事件、策略更新日志、原始实验数据与消融结果证明改进来自 SchedPilot；无干扰场景尽量控制在 ±2% 以内且不得明显退化。
 11. **已落地实现（v0.3.0-mvp）**：`bpf/scx_schedpilot.bpf.c`、`loader/scx_schedpilot.c`、`daemon/schedpilotd`、`scripts/env_check.sh`、`scripts/build.sh`、`scripts/schedpilotctl.sh`、`bench/*` 与 `docs/*` 已提交；在开发机 rd350x（Ubuntu 24.04 / clang 18 / libbpf 1.3）完成全量编译与脚本检查，证据见 `evidence/rd350x-dev-20260929/`。
 12. **环境与实测（2026-10-01 更新）**：原 SP4 主环境（192.168.1.123）**本身也是虚拟机而非物理机**，与本次自建的 openEuler 24.03 LTS SP4 KVM 虚拟机（桥接 192.168.1.131）环境等价；自编译启用 `CONFIG_SCHED_CLASS_EXT` 的 `6.6.0-schedpilot` 内核，完成全部正式实验（两处环境均为虚拟化，不构成环境缺口）。
-13. **v0.3 最终实测结果（场景 v3：服务与干扰同 CPU 集 0-3，客户端隔离 4-7）**：
-    - **Redis（formal-2，7 臂 × 20 × 60s）**：D vs 默认 fair **QPS +116.9%**（p<0.0001），固定 SLO(5ms) goodput +116.5%；归因：sched_ext 本身 +69.0%、分类 +24.8%、自适应 +2.9%。
-    - **MySQL（mysql-2，4 臂 × 20 × 60s）**：D **TPS +62.4%、p99 −77.2%**（p<0.0001）。
-    - **Nginx（nginx-2，4 臂 × 20 × 60s）**：**basic 模式（B）+43.8% QPS、p99 −37.7%**（p<0.0001）；分类模式（C/D）吞吐更高但 p99 恶化，列为 P1 限制。
-    - **无干扰回归（noif-1）**：C/D 吞吐 ±2% 内、p99 −13.2%。
+13. **v0.3 最终实测结果（场景 v3：服务与干扰同 CPU 集 0-3，客户端隔离 4-7；统计口径为逐轮配对复算）**：
+    - **Redis（formal-2*，7 臂 × 20 × 60s）**：D vs 默认 fair **QPS +116.9%（配对 +116.78%，95% CI [+111.91%, +121.66%]，20/20 轮更高）**，固定 SLO(5ms) goodput 配对 +116.17%；归因：sched_ext 本身 B vs A 配对 +69.93%，分类/自适应继续提升；消融 vs D 的配对 CI 均跨 0（趋势性结论）。
+    - **MySQL（mysql-2*，4 臂 × 20 × 60s）**：D **TPS +62.4%（配对 +77.49% [58.66, 96.33]）、p99 −77.2%（配对 −68.18%）**。
+    - **Nginx（nginx-2*，4 臂 × 20 × 60s）**：**basic 模式（B）QPS +43.8%（配对 +54.29% [39.23, 69.35]）、p99 −37.7%（配对 −37.28%，18/20 轮更低）**；部署入口 `scripts/deploy_nginx.sh`，回归测试 `tests/test_nginx_basic.sh`；分类模式尾延迟为 P1。
+    - **无干扰回归（noif-1）**：吞吐系统性 −2.0% 左右（D −2.06% [−3.11, −1.01]，10/10 轮为负）、p99 −12.7%——"少量吞吐换尾延迟"，不表述为回归受控。
     - **外部对照（ext-1）**：内核树示例 scx_simple **−49.7%（p99 +350%）**、scx_flatcg +1.8%；SchedPilot D **+118.9%**。
-    - 故障注入 6/6 通过；30 分钟长稳通过；全部原始数据见 `evidence/sp4-vm/` 与 VM `results/`。
+    - 故障注入 6/6 通过；30/15 分钟长稳通过（0 失速）；`*` 为冻结前版本，冻结版复跑（commit + 二进制 SHA256 + 原始数据归档）见 `docs/04_test_report.md` §6.10。
 
 
 ---
@@ -279,7 +279,7 @@ flowchart TB
 1. **唤醒链同域共置（P1）**：识别生产者-消费者对（如 Nginx worker ↔ 网卡软中断、Redis 主线程 ↔ IO 线程），同 LLC 优先放置（借鉴 PANDEMONIUM 的 pair/亲和思想）。省赛 MVP 不实现复杂自动识别。
 2. **LLC 软亲和 + 迁移惩罚（MVP 已实现）**：M-BOUND 任务按 waker 所在 LLC 域路由到对应 CACHE DSQ；跨域迁移在 vtime 上施加可调惩罚（`migrate_penalty_ns`），减少无意义迁移。
 3. **NUMA（P1，可选）**：只允许实现“基于当前 CPU NUMA node 与 /proc/[pid]/numa_maps 页面分布的 placement locality/mismatch 推断”，不宣称直接获得精确 local/remote memory access ratio。
-4. **干扰收容（MVP：vtime 降权；CPU pool 为 P1）**：BG 类任务通过显式配置标记，MVP 用低权重 + 长切片 + 不抢占实现软收容；动态 CPU pool 列为 P1，不阻塞省赛。
+4. **干扰收容（MVP：vtime 降权 + 短切片；CPU pool 为 P1）**：BG 类任务通过显式配置标记，MVP 用低权重（vtime ×2 惩罚）+ 短切片（2ms）+ 不主动抢占实现软收容；**BG 切片必须短于 COMP 切片**——速率限制下的 LAT 唤醒只能等受害任务到调度点，LAT p99 以受害任务片长为上界（formal-3 回归根因，见测试报告 §6.10）。动态 CPU pool 列为 P1，不阻塞省赛。
 5. **预抢占（MVP 已实现）**：L-SYNC 唤醒且目标 CPU 非空闲时，按速率限制触发 `SCX_KICK_PREEMPT`；阈值由 cfg 下发并可消融。
 
 ### 5.4 自适应控制回路（用户态）
@@ -290,6 +290,7 @@ flowchart TB
 | `cache_slice_ns` | 8ms | M-BOUND 的 LLC MPKI | MPKI 高→增大切片（2–16ms 界内） |
 | `migrate_penalty_ns` | 2ms | CACHE 任务实际迁移频率 | 迁移多→增大惩罚（1–8ms 界内） |
 | `comp_slice_ns` | 4ms | 公平性/吞吐 | MVP 保持静态可配，P1 再做自适应 |
+| `bg_slice_ns` | 2ms | 静态（BG 收容质量） | 必须短于 COMP 切片：LAT 预抢占受速率限制时，等待以受害任务片长为界（10ms 旧默认曾使 Redis p99 ≈ 10ms） |
 | `bg_vtime_pct` | 200 | BG 收容开关（消融项） | 100 = 不惩罚；配合 `SP_FLAG_BG_CONTAIN` |
 | `preempt_thresh_ns` | 0.5ms | LAT 唤醒预抢占速率限制 | 可消融（`SP_FLAG_PREEMPT`） |
 | heartbeat / watchdog | 2s | daemon 心跳 | 超时→BPF 使用静态安全参数（fail-open） |

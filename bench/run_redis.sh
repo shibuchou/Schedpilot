@@ -71,7 +71,9 @@ timeout "$WARMUP" redis-benchmark -h 127.0.0.1 -p "$PORT" -t get -c 50 \
 	-n 100000000 -q >/dev/null 2>&1 || true
 
 # ---------- estimate request count for target duration ----------
-EST_OUT="$(redis-benchmark -h 127.0.0.1 -p "$PORT" -t get -c 50 -n 20000 -q 2>/dev/null || true)"
+# Use a longer burst (100k requests) so the estimate reflects sustained
+# steady-state throughput under interference, not a sub-second transient.
+EST_OUT="$(redis-benchmark -h 127.0.0.1 -p "$PORT" -t get -c 50 -n 100000 -q 2>/dev/null || true)"
 RATE="$(printf '%s' "$EST_OUT" | grep -oE '[0-9]+(\.[0-9]+)? requests per second' | head -n1 | awk '{print $1}')"
 if [ -z "$RATE" ]; then RATE=20000; fi
 TOTAL="$(python3 -c "r=float('${RATE}'); d=float('${DURATION}'); print(max(50000, int(round(r*d/1000.0))*1000))")"

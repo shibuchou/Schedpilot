@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.3.1 — 审计整改（2026-10-02）
+
+- **长期运行状态清理**：BPF `class_map` 增加 TTL（5s，daemon 心跳失效/ PID 复用自动过期）；
+  daemon 在目标消失时调用 `pmu.drop_tgid()` + 删除 `tg_stats` 条目，并每 60s GC 超过 5 分钟的陈旧条目。
+- **实验判定收紧**：`abcd_experiment.sh` 逐臂校验调度器状态、运行前后 `enable_seq` 污染检测、
+  默认 fail-fast、无效轮次写入 `INVALID`/`invalid.log` 且实验最终以非零退出；
+  meta 记录内核版本 + 二进制 SHA256 + 场景定义。`test_soak.sh` 将 watchdog_hits、redis-benchmark
+  失败、停止后状态纳入硬门槛；`env_check.sh` FAIL 时非零退出（`--soft` 可忽略）。
+- **统计口径修正**：`analyze_results.py` 新增逐轮配对复算（mean Δ% + 95% CI + 更高/更低轮数），
+  自动跳过无效轮次；文档不再把 p99 的 p 值附在吞吐提升后；无干扰回归改为
+  "D 吞吐 −2.06% [−3.11, −1.01]，10/10 轮为负；p99 −12.7%"；消融 vs D 的 CI 跨 0 → 趋势性结论。
+- **Nginx 部署入口**：新增 `scripts/deploy_nginx.sh`（basic 模式 + 状态校验）与
+  回归测试 `tests/test_nginx_basic.sh`（7/7 通过）。
+- **CI**：新增 `bpf-build` job：抓取 ≥6.12 上游 BTF（`tools/ci/fetch_vmlinux_h.sh`，含 zstd/lz4 依赖与
+  ar 回退）→ `make bpf`；已在 WSL 端到端验证。
+- **冻结复跑**：`formal-3`（Redis 7 臂 ×20）与 `nginx-3`（A/B ×20）在 commit `0500606` 上重跑。
+  formal-3 暴露 Redis C/D 回归（D 仅 +16.4%、p99 ≈10ms）。
+- **回归修复（BG 切片）**：根因为 LAT 预抢占受 0.5ms 速率限制，被限流的唤醒只能等受害任务
+  的下一个调度点，LAT p99 以受害任务片长为上界；旧默认 `bg_slice_ns=10ms` 使 p99≈10ms，
+  并把自适应 `lat_slice` 推向下限 0.3ms。修复：`bg_slice_ns` 默认 10ms→2ms（loader+BPF），
+  同时回退 anti-starvation 守卫（恢复 LAT-first 不变式）。pilot-8：D 49665 QPS / p99 2.83ms
+  vs B 29228 QPS / p99 4.68ms。正式复跑 `formal-4`/`nginx-4`/`mysql-3` 见测试报告 §6.10。
+
 ## v0.3.0-mvp — 省赛最小闭环（2026-09-29 → 2026-10-01）
 
 ### 最终修复轮（三负载与稳定性）
