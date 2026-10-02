@@ -38,7 +38,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            clang llvm libbpf-dev libelf-dev zlib1g-dev bpftool curl
+            clang llvm libbpf-dev libelf-dev zlib1g-dev bpftool curl \
+            zstd lz4 xz-utils
 
       - name: Fetch upstream BTF (>=6.12) and dump vmlinux.h
         run: bash tools/ci/fetch_vmlinux_h.sh /tmp/vmlinux.h
