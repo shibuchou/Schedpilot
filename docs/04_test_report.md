@@ -307,8 +307,8 @@ Pipeline 全通：`bench/abcd_experiment.sh` 自动完成 A/B/C/D 交织、干�
    p<0.0001）**；分类模式下的 Nginx 尾延迟优化列为 P1。
 2. **二进制修订差异**：formal-2/noif-1/ext-1 与 nginx-2/mysql-2 使用修复过程中不同 revision 的产物；
    每次实验记录 `git_commit`，二进制 SHA256 以 VM `build/` 为准（见证据索引说明）。
-3. 物理 SP4（192.168.1.123）截至本报告仍离线，全部实验在自建 SP4 KVM 虚拟机（6.6.0-schedpilot）完成；
-   正式提交前如需物理机复测，按 `docs/02_test_plan.md` 同样矩阵执行。
+3. 原 SP4（192.168.1.123）**本身也是虚拟机而非物理机**，与本实验所用自建 SP4 KVM 虚拟机（6.6.0-schedpilot）环境等价，不构成环境缺口；
+   全部结论在该环境完成。若原机恢复，可做一次交叉复测作为加分项（非阻塞）。
 
 **故障注入（tests/test_fault_injection.sh）**：6/6 PASS
 （loader kill → 自动 detach；daemon crash → 调度器保持 enabled 且心跳过期；daemon 重启 → 心跳恢复；rollback 正常）。

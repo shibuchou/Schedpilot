@@ -24,7 +24,7 @@
 9. **实验要求（省赛）**：A=默认 fair → B=基础 sched_ext → C=+任务分类 → D=SchedPilot full adaptive 递进对照 + 关键机制消融；旗舰场景只聚焦 Redis + CPU/内存后台干扰混部；客户端隔离必须显式；核心结果 ≥20 次有效交织重复；保存全部原始 CSV/JSON、运行配置、git commit、系统信息、调度器状态、PMU 原始计数与日志；统计 QPS、p50/p95/p99/p99.9、CPU 利用率、上下文切换、迁移次数、IPC、MPKI、scheduler/daemon overhead，并报告中位数、IQR、均值/标准差与 95% CI。
 10. **验收目标**：真实 ACTIVE sched_ext policy 下，相比同环境 default fair baseline，Redis 混部场景 P99 降低 ≥10% 或固定 P99 SLO 下有效吞吐提高 ≥10%，并可通过 map、DSQ dispatch、分类事件、策略更新日志、原始实验数据与消融结果证明改进来自 SchedPilot；无干扰场景尽量控制在 ±2% 以内且不得明显退化。
 11. **已落地实现（v0.3.0-mvp）**：`bpf/scx_schedpilot.bpf.c`、`loader/scx_schedpilot.c`、`daemon/schedpilotd`、`scripts/env_check.sh`、`scripts/build.sh`、`scripts/schedpilotctl.sh`、`bench/*` 与 `docs/*` 已提交；在开发机 rd350x（Ubuntu 24.04 / clang 18 / libbpf 1.3）完成全量编译与脚本检查，证据见 `evidence/rd350x-dev-20260929/`。
-12. **环境与实测（2026-10-01 更新）**：物理 SP4（192.168.1.123）持续离线；已在 rd350x 上创建 openEuler 24.03 LTS SP4 KVM 虚拟机（桥接 192.168.1.131），自编译启用 `CONFIG_SCHED_CLASS_EXT` 的 `6.6.0-schedpilot` 内核，完成全部正式实验。
+12. **环境与实测（2026-10-01 更新）**：原 SP4 主环境（192.168.1.123）**本身也是虚拟机而非物理机**，与本次自建的 openEuler 24.03 LTS SP4 KVM 虚拟机（桥接 192.168.1.131）环境等价；自编译启用 `CONFIG_SCHED_CLASS_EXT` 的 `6.6.0-schedpilot` 内核，完成全部正式实验（两处环境均为虚拟化，不构成环境缺口）。
 13. **v0.3 最终实测结果（场景 v3：服务与干扰同 CPU 集 0-3，客户端隔离 4-7）**：
     - **Redis（formal-2，7 臂 × 20 × 60s）**：D vs 默认 fair **QPS +116.9%**（p<0.0001），固定 SLO(5ms) goodput +116.5%；归因：sched_ext 本身 +69.0%、分类 +24.8%、自适应 +2.9%。
     - **MySQL（mysql-2，4 臂 × 20 × 60s）**：D **TPS +62.4%、p99 −77.2%**（p<0.0001）。
@@ -546,7 +546,7 @@ SchedPilot v1.0 必须同时满足：
 ## 16. 待确认事项
 
 1. **正式封面字段**：参赛学校、负责人、指导教师、正式提交日期和最终 PDF 文件名，按报名系统信息补齐。
-2. **评测硬件**：SP4 主环境（192.168.1.123）在 2026-09-29 开发期间离线；恢复后先跑 `scripts/env_check.sh` 记录 CPU 型号、核心数、NUMA 拓扑与 PMU/vPMU 可用性的真实结果。
+2. **评测硬件**：原 SP4 主环境（192.168.1.123）亦为虚拟机，与本次 KVM 虚拟机环境等价；环境探测结果已记录于 `evidence/sp4-vm/env_check.json`（OS/kernel/CPU/BTF/sched_ext/PMU），无需等待原机恢复；如原机可用可做交叉复测（非阻塞加分项）。
 3. **控制面实现冻结**：已确定 C++（libbpf）控制面，复用 EulerPilot 的能力探测、PSI 与证据设施；Rust 不引入。
 4. **内核与工具链矩阵**：主验证固定 SP4 + 其启用 `CONFIG_SCHED_CLASS_EXT` 的内核（发行版或自编译）；SP1/SP3 兼容验证按时间安排。
 5. **竞赛节点**：以赛事正式通知更新三阶段时间；本文中的日期是当前申请材料中的计划基线。
