@@ -25,8 +25,23 @@ jobs:
       - name: Classifier unit tests
         run: make test
 
-# NOTE: the BPF object build requires a kernel BTF with sched_ext types
-# (CONFIG_SCHED_CLASS_EXT=y). GitHub runners do not provide that, so the
-# BPF data plane is compile-verified on the target openEuler environment
-# via scripts/build.sh --kernel-src. Daemon + parsers + scripts are covered
-# here.
+  bpf-build:
+    # Upstream-compatibility BPF build: fetches a >=6.12 kernel BTF for
+    # vmlinux.h and compiles the sched_ext object with the vendored headers.
+    # The frozen openEuler target build uses the exact kernel tree via
+    # scripts/build.sh --kernel-src (see docs/03_deploy_rollback.md).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang llvm libbpf-dev libelf-dev zlib1g-dev bpftool curl
+
+      - name: Fetch upstream BTF (>=6.12) and dump vmlinux.h
+        run: bash tools/ci/fetch_vmlinux_h.sh /tmp/vmlinux.h
+
+      - name: Build sched_ext BPF object
+        run: make bpf VMLINUX=/tmp/vmlinux.h

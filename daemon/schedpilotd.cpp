@@ -637,6 +637,7 @@ int main(int argc, char **argv)
 	uint64_t start_ns = now_mono_ns();
 	uint64_t last_scan_ns = 0;
 	uint64_t last_stats_ns = 0;
+	uint64_t last_gc_ns = 0;
 	std::vector<uint64_t> prev_stats;
 	bool warned_dry_run = false;
 	int write_failures = 0;
@@ -663,8 +664,11 @@ int main(int argc, char **argv)
 			for (auto it = targets.begin(); it != targets.end();) {
 				if (!live.count(it->first)) {
 					classifier.forget(it->first);
-					if (!dry_run)
+					pmu.drop_tgid(it->first);
+					if (!dry_run) {
 						iface.class_del(it->first);
+						iface.tg_stats_del(it->first);
+					}
 					it = targets.erase(it);
 				} else {
 					++it;
@@ -684,6 +688,28 @@ int main(int argc, char **argv)
 					if (!dry_run && pmu_ok)
 						pmu.ensure_tgid(t.tgid, nullptr);
 				}
+			}
+		}
+
+		// Periodic GC of stale per-TGID scheduling counters so long-running
+		// systems with churning processes do not fill the BPF hash.
+		if (now - last_gc_ns >= 60000000000ULL) {
+			last_gc_ns = now;
+			uint32_t nxt = 0, cur = 0;
+			bool found = false;
+			int guard = 0;
+			iface.tg_stats_next(nullptr, &nxt, &found);
+			while (found && guard++ < 200000) {
+				if (!targets.count(nxt)) {
+					sp_tg_stats st{};
+					if (iface.tg_stats_get(nxt, &st) &&
+					    st.last_update_ns &&
+					    now - st.last_update_ns > 300000000000ULL &&
+					    !dry_run)
+						iface.tg_stats_del(nxt);
+				}
+				cur = nxt;
+				iface.tg_stats_next(&cur, &nxt, &found);
 			}
 		}
 
@@ -749,7 +775,7 @@ int main(int argc, char **argv)
 					sp_task_class tc{};
 					tc.klass = SP_CLASS_BG;
 					tc.confidence = 1000;
-					tc.updated_ns = now_real_ns();
+					tc.updated_ns = now_mono_ns();
 					tc.source = SP_SRC_EXTERN;
 					if (!iface.class_set(t.tgid, tc))
 						write_failures++;
@@ -773,7 +799,7 @@ int main(int argc, char **argv)
 				tc.klass = d.klass;
 				tc.confidence =
 					(uint32_t)(d.confidence * 1000.0);
-				tc.updated_ns = now_real_ns();
+				tc.updated_ns = now_mono_ns();
 				tc.source = SP_SRC_RULES;
 				if (!iface.class_set(t.tgid, tc))
 					write_failures++;

@@ -120,6 +120,7 @@ struct sp_tg_stats {
 #define SP_STAT_CFG_STALE            30
 #define SP_STAT_DSQ_CACHE_TRY        31
 #define SP_STAT_DSQ_CACHE_HIT        32
+#define SP_STAT_CLASSMAP_EXPIRED     33
 #define SP_NR_STATS                  40
 
 #endif /* __SCHEDPILOT_INTF_H */

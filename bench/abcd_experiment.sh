@@ -34,6 +34,8 @@ IF_CPU_WORKERS=4
 IF_VM_WORKERS=2
 IF_VM_BYTES="1G"
 MYSQL_CNF="${MYSQL_CNF:-/etc/schedpilot-mysql.cnf}"
+FAIL_FAST=1
+INVALID_RUNS=0
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -53,6 +55,7 @@ while [ $# -gt 0 ]; do
 	--if-vm-bytes) IF_VM_BYTES="$2"; shift 2 ;;
 	--no-interference) NO_INTERFERENCE=1; shift ;;
 	--skip-analyze) SKIP_ANALYZE=1; shift ;;
+	--continue-on-error) FAIL_FAST=0; shift ;;
 	-h|--help) sed -n '2,20p' "$0"; exit 0 ;;
 	*) echo "unknown arg: $1" >&2; exit 1 ;;
 	esac
@@ -141,15 +144,27 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# ---------- experiment metadata (kernel / commit / binary hashes) ----------
+KERNEL_REL="$(uname -r)"
+SHA_LOADER="$(sha256sum "$ROOT/build/scx_schedpilot" 2>/dev/null | awk '{print $1}')"
+SHA_DAEMON="$(sha256sum "$ROOT/build/schedpilotd" 2>/dev/null | awk '{print $1}')"
+SHA_BPF="$(sha256sum "$ROOT/build/scx-tools/build/obj/sched_ext/scx_schedpilot.bpf.o" 2>/dev/null | awk '{print $1}')"
+[ -n "$SHA_BPF" ] || SHA_BPF="$(sha256sum "$ROOT/build/scx_schedpilot.bpf.o" 2>/dev/null | awk '{print $1}')"
+
 cat >"$RESULTS/experiment.meta.json" <<EOF
 {
   "started": "$(date -Is)",
   "host": "$(hostname)",
-  "kernel": "$(uname -r)",
+  "scenario": "v3 (service + interference share SERVER_CPUS; client isolated)",
+  "kernel": "$KERNEL_REL",
+  "workload": "$WORKLOAD",
+  "port": $PORT,
+  "config": "$CONFIG",
   "runs": $RUNS,
   "duration_s": $DURATION,
   "warmup_s": $WARMUP,
   "arms": "$ARMS",
+  "fail_fast": $FAIL_FAST,
   "server_cpus": "$SERVER_CPUS",
   "client_cpus": "$CLIENT_CPUS",
   "interference_cpus": "$INTERFERENCE_CPUS",
@@ -157,11 +172,13 @@ cat >"$RESULTS/experiment.meta.json" <<EOF
   "interference_cpu_workers": $IF_CPU_WORKERS,
   "interference_vm_workers": $IF_VM_WORKERS,
   "interference_vm_bytes": "$IF_VM_BYTES",
-  "workload": "$WORKLOAD",
-  "port": $PORT,
-  "config": "$CONFIG",
   "baseline_note": "Baseline is the openEuler default fair-class scheduler (competition text: default CFS); Linux 6.6 fair-class internals are not assumed identical to mainline classic CFS.",
-  "git_commit": "$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+  "git_commit": "$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)",
+  "binaries": {
+    "scx_schedpilot_sha256": "$SHA_LOADER",
+    "schedpilotd_sha256": "$SHA_DAEMON",
+    "bpf_object_sha256": "$SHA_BPF"
+  }
 }
 EOF
 
@@ -206,6 +223,39 @@ setup_arm() {
 		;;
 	esac
 	sleep 2
+
+	# Scheduler state validation: a broken arm must never produce data.
+	local st ops
+	st="$(cat /sys/kernel/sched_ext/state 2>/dev/null || echo missing)"
+	ops="$(ls /sys/kernel/sched_ext/*/ops 2>/dev/null | xargs -r -n1 cat 2>/dev/null | tr '\n' ' ')"
+	if [ "$arm" = "A" ]; then
+		case "$ops" in
+		*schedpilot*) echo "[FAIL] arm A: schedpilot still registered (ops=$ops)" >&2; return 1 ;;
+		esac
+	else
+		[ "$st" = "enabled" ] || { echo "[FAIL] arm $arm: sched_ext state=$st" >&2; return 1; }
+		case "$arm" in
+		X-*) : ;;
+		*) case "$ops" in
+		   *schedpilot*) : ;;
+		   *) echo "[FAIL] arm $arm: unexpected ops=$ops" >&2; return 1 ;;
+		   esac ;;
+		esac
+	fi
+	return 0
+}
+
+# Mark a run as invalid (contaminated / setup failure) and optionally abort.
+invalid() {
+	local arm="$1" out="$2" reason="$3"
+	INVALID_RUNS=$((INVALID_RUNS + 1))
+	echo "$reason" >"$out/INVALID"
+	echo "$(date -Is) arm=$arm run=$run reason=$reason" >>"$RESULTS/invalid.log"
+	echo "[FAIL] invalid run: arm=$arm reason=$reason"
+	if [ "$FAIL_FAST" = "1" ]; then
+		echo "[exp] fail-fast enabled: aborting"
+		exit 1
+	fi
 }
 
 IFS=',' read -r -a ARM_LIST <<<"$ARMS"
@@ -224,7 +274,11 @@ for run in $(seq 1 "$RUNS"); do
 		out="$RESULTS/$arm/run-$(printf '%02d' "$run")"
 		mkdir -p "$out"
 		echo "[exp] run=$run arm=$arm out=$out"
-		setup_arm "$arm" "$out" >"$out/setup.log" 2>&1
+		if ! setup_arm "$arm" "$out" >"$out/setup.log" 2>&1; then
+			invalid "$arm" "$out" "arm setup validation failed"
+			continue
+		fi
+		SEQ_BEFORE="$(cat /sys/kernel/sched_ext/enable_seq 2>/dev/null || echo -1)"
 		if [ "$WORKLOAD" = "redis" ]; then
 			redis-cli -p "$PORT" flushall >/dev/null 2>&1 || true
 		fi
@@ -241,15 +295,25 @@ for run in $(seq 1 "$RUNS"); do
 			--port "$PORT" --duration "$DURATION" --warmup "$WARMUP" \
 			"${EXTRA[@]}" >"$out/run.stdout" 2>&1
 
+		# Post-run contamination check: scheduler must still be the one we
+		# started (no watchdog abort / fallback to fair mid-measurement).
+		ST_AFTER="$(cat /sys/kernel/sched_ext/state 2>/dev/null || echo missing)"
+		SEQ_AFTER="$(cat /sys/kernel/sched_ext/enable_seq 2>/dev/null || echo -1)"
+		INVALID_REASON=""
+		if [ "$arm" != "A" ] && { [ "$ST_AFTER" != "enabled" ] || [ "$SEQ_AFTER" != "$SEQ_BEFORE" ]; }; then
+			INVALID_REASON="contaminated: state=$ST_AFTER enable_seq ${SEQ_BEFORE}->${SEQ_AFTER}"
+		fi
+
 		if [ -n "${EXT_PID:-}" ]; then
 			kill "$EXT_PID" 2>/dev/null || true
 			EXT_PID=""
 		fi
 
-		python3 - "$out" "$arm" "$run" <<'PY' >"$out/meta.json"
+		python3 - "$out" "$arm" "$run" "$INVALID_REASON" <<'PY' >"$out/meta.json"
 import json, os, sys
-out, arm, run = sys.argv[1], sys.argv[2], sys.argv[3]
-meta = {"arm": arm, "run": int(run), "out": out}
+out, arm, run, reason = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+meta = {"arm": arm, "run": int(run), "out": out,
+        "invalid": bool(reason), "invalid_reason": reason}
 for name in ("summary.json", "redis_summary.json"):
     path = os.path.join(out, name)
     if os.path.exists(path):
@@ -261,6 +325,10 @@ for name in ("summary.json", "redis_summary.json"):
         break
 print(json.dumps(meta, indent=2))
 PY
+
+		if [ -n "$INVALID_REASON" ]; then
+			invalid "$arm" "$out" "$INVALID_REASON"
+		fi
 
 		"$ROOT/scripts/schedpilotctl.sh" stop >/dev/null 2>&1 || true
 		sleep 1
@@ -274,3 +342,7 @@ if [ "$SKIP_ANALYZE" = "0" ]; then
 	[ -f "$RESULTS/summary.md" ] && cat "$RESULTS/summary.md"
 fi
 echo "[exp] results: $RESULTS"
+if [ "$INVALID_RUNS" -gt 0 ]; then
+	echo "[FAIL] $INVALID_RUNS invalid run(s); see $RESULTS/invalid.log"
+	exit 1
+fi

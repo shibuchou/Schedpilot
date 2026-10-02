@@ -103,6 +103,8 @@ def load_runs(results):
             row = {"arm": arm, "run": run_name}
             try:
                 meta = json.load(open(os.path.join(run_dir, "meta.json")))
+                if meta.get("invalid"):
+                    continue
                 primary = meta.get("primary", {})
                 row.update({
                     "qps": primary.get("rps"),
@@ -174,6 +176,38 @@ def mann_whitney_p(a, b):
     # two-sided normal p-value
     p = math.erfc(abs(z) / math.sqrt(2.0))
     return p
+
+
+def paired_percent_diffs(per_run, arm, baseline, key):
+    """Per-run paired percentage differences (arm vs baseline, same run id)."""
+    a = {r["run"]: r.get(key) for r in per_run if r["arm"] == arm}
+    b = {r["run"]: r.get(key) for r in per_run if r["arm"] == baseline}
+    common = sorted(set(a) & set(b))
+    diffs = []
+    for run in common:
+        va, vb = a.get(run), b.get(run)
+        if va is None or vb is None or not vb:
+            continue
+        diffs.append((va - vb) / vb * 100.0)
+    return diffs
+
+
+def paired_stats(diffs):
+    n = len(diffs)
+    if n < 2:
+        return None
+    mean = statistics.fmean(diffs)
+    std = statistics.stdev(diffs)
+    half = t_crit(n) * std / math.sqrt(n)
+    return {
+        "n": n,
+        "mean": mean,
+        "lo": mean - half,
+        "hi": mean + half,
+        "higher": sum(1 for d in diffs if d > 0),
+        "lower": sum(1 for d in diffs if d < 0),
+        "equal": sum(1 for d in diffs if d == 0),
+    }
 
 
 def fmt(v, digits=3):
@@ -302,6 +336,26 @@ def main():
         dq = f"{(aq - bq) / bq * 100:+.1f}%" if aq and bq else "-"
         dp = f"{(ap - bp) / bp * 100:+.1f}%" if ap and bp else "-"
         lines.append(f"| {label} | {arm} vs {base} | {dq} | {dp} |")
+
+    lines.append("\n## Paired per-run comparison vs baseline (same run index)\n")
+    lines.append("Mean of per-run paired deltas with 95% CI; `higher`/`lower` are the")
+    lines.append("number of runs where the arm was above/below the baseline for that metric.\n")
+    lines.append("| arm | metric | n | mean Δ% | 95% CI | runs higher | runs lower |")
+    lines.append("|---|---|---|---|---|---|---|")
+    paired_metrics = [("qps", "qps"), ("slo_goodput_rps", "goodput@SLO"),
+                      ("p99_ms", "p99")]
+    for arm in arms:
+        if arm == args.baseline:
+            continue
+        for key, label in paired_metrics:
+            st = paired_stats(
+                paired_percent_diffs(per_run, arm, args.baseline, key))
+            if not st:
+                continue
+            lines.append(
+                f"| {arm} | {label} | {st['n']} | {st['mean']:+.2f}% | "
+                f"[{st['lo']:+.2f}%, {st['hi']:+.2f}%] | "
+                f"{st['higher']} | {st['lower']} |")
 
     with open(os.path.join(results, "summary.md"), "w") as f:
         f.write("\n".join(lines) + "\n")

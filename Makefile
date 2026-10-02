@@ -16,7 +16,7 @@ CC ?= cc
 CXX ?= g++
 
 BPF_CFLAGS := -g -O2 -target bpf -mcpu=v3 -D__TARGET_ARCH_x86 -D__SCHEDPILOT_BPF__ \
-	      -I$(SCX_INC) -I$(BUILD_DIR) -Wno-compare-distinct-pointer-types
+	      -I$(SCX_INC) -I$(BUILD_DIR) -I$(dir $(VMLINUX)) -Wno-compare-distinct-pointer-types
 CFLAGS := -O2 -g -Wall -Wextra -I$(ROOT)/bpf -I$(SCX_INC) -I$(BUILD_DIR)
 CXXFLAGS := -O2 -g -std=c++17 -Wall -Wextra -I$(ROOT)/bpf -I$(BUILD_DIR)
 

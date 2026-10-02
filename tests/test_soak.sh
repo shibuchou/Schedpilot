@@ -56,7 +56,10 @@ DMESG_START="$(dmesg 2>/dev/null | wc -l)"
 while [ "$(date +%s)" -lt "$END" ]; do
 	CYCLES=$((CYCLES + 1))
 	say "cycle $CYCLES $(date -Is)"
-	redis-benchmark -h 127.0.0.1 -p 6399 -t get -c 50 -n 1000000 -q >/dev/null 2>&1 || true
+	if ! redis-benchmark -h 127.0.0.1 -p 6399 -t get -c 50 -n 1000000 -q >/dev/null 2>&1; then
+		ERRORS=$((ERRORS + 1))
+		say "ANOMALY redis-benchmark failed"
+	fi
 	# anomaly checks
 	st="$(state)"
 	if [ "$st" != "enabled" ]; then
@@ -79,9 +82,11 @@ done
 say "cycles=$CYCLES errors=$ERRORS watchdog_hits=$WATCHDOG"
 say "final state=$(state)"
 "$ROOT/scripts/schedpilotctl.sh" stop >/dev/null 2>&1 || true
-if [ "$ERRORS" -eq 0 ] && [ "$(state)" != "enabled" ]; then
+POST_STATE="$(state)"
+say "post-stop state=$POST_STATE"
+if [ "$ERRORS" -eq 0 ] && [ "$WATCHDOG" -eq 0 ] && [ "$POST_STATE" = "disabled" ]; then
 	say "SOAK PASS"
 	exit 0
 fi
-say "SOAK FAIL (errors=$ERRORS state=$(state))"
+say "SOAK FAIL (errors=$ERRORS watchdog=$WATCHDOG post_state=$POST_STATE)"
 exit 1

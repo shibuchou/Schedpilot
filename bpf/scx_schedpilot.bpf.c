@@ -33,6 +33,7 @@ UEI_DEFINE(uei);
 #define SP_MAX_MIG_PEN_NS      8000000ULL
 #define SP_DEF_BG_VTIME_PCT         200u
 #define SP_MAX_RUN_DELAY_NS  1000000000ULL
+#define SP_CLASS_TTL_NS       5000000000ULL
 
 /* per-task context (task storage) */
 struct sp_task_ctx {
@@ -175,6 +176,16 @@ static u32 lookup_class(struct task_struct *p)
 	struct sp_task_class *tc = bpf_map_lookup_elem(&class_map, &tgid);
 
 	if (tc) {
+		u64 now = bpf_ktime_get_ns();
+
+		/* Stale classifications expire (daemon heartbeat is the
+		 * liveness source; a dead/restarted daemon must not leave old
+		 * PIDs classified forever, e.g. after PID reuse). */
+		if (!tc->updated_ns ||
+		    now - tc->updated_ns > SP_CLASS_TTL_NS) {
+			stat_inc(SP_STAT_CLASSMAP_EXPIRED);
+			return SP_CLASS_NORMAL;
+		}
 		stat_inc(SP_STAT_CLASSMAP_HIT);
 		if (tc->klass <= SP_CLASS_MAX)
 			return tc->klass;

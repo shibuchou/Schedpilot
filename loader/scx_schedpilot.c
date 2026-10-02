@@ -83,6 +83,7 @@ static const char *stat_names[SP_NR_STATS] = {
 	[SP_STAT_CFG_STALE] = "cfg_stale",
 	[SP_STAT_DSQ_CACHE_TRY] = "dsq_cache_try",
 	[SP_STAT_DSQ_CACHE_HIT] = "dsq_cache_hit",
+	[SP_STAT_CLASSMAP_EXPIRED] = "class_expired",
 };
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,

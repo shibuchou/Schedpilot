@@ -10,10 +10,12 @@ set -u
 
 JSON_OUT=""
 LABEL="$(hostname)-$(date +%Y%m%d-%H%M%S)"
+SOFT=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--json) JSON_OUT="$2"; shift 2 ;;
 	--label) LABEL="$2"; shift 2 ;;
+	--soft) SOFT=1; shift ;;
 	-h|--help) sed -n '2,12p' "$0"; exit 0 ;;
 	*) echo "unknown arg: $1" >&2; exit 1 ;;
 	esac
@@ -171,7 +173,6 @@ echo "=== summary: OK=$pass WARN=$warn FAIL=$fail ==="
 if [ "$fail" -gt 0 ]; then
 	echo "FATAL_CHECKS_FAILED=$fail (see [FAIL] rows above)"
 fi
-
 if [ -n "$JSON_OUT" ]; then
 	{
 		printf '{\n  "label": "%s",\n  "timestamp": "%s",\n' "$(jesc "$LABEL")" "$TS"
@@ -190,4 +191,8 @@ if [ -n "$JSON_OUT" ]; then
 	echo "json written: $JSON_OUT"
 fi
 
+if [ "$fail" -gt 0 ] && [ "$SOFT" != "1" ]; then
+	echo "env_check: $fail fatal check(s) failed (use --soft to ignore exit code)"
+	exit 1
+fi
 exit 0
