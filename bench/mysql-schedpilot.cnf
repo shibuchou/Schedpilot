@@ -1,0 +1,18 @@
+# SchedPilot MySQL benchmark instance (port 3307).
+# Install with: install -m 600 bench/mysql-schedpilot.cnf /etc/schedpilot-mysql.cnf
+# or run scripts/setup_mysql.sh which does this automatically.
+[mysqld]
+user=mysql
+port=3307
+bind-address=127.0.0.1
+datadir=/var/lib/schedpilot-mysql
+socket=/var/run/schedpilot-mysql/mysql.sock
+pid-file=/var/run/schedpilot-mysql/mysqld.pid
+log-error=/var/log/schedpilot-mysql/error.log
+skip-name-resolve
+mysqlx=OFF
+innodb_buffer_pool_size=512M
+max_connections=500
+[client]
+port=3307
+socket=/var/run/schedpilot-mysql/mysql.sock

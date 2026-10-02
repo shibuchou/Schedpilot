@@ -33,6 +33,7 @@ WORKLOAD="redis"
 IF_CPU_WORKERS=4
 IF_VM_WORKERS=2
 IF_VM_BYTES="1G"
+MYSQL_CNF="${MYSQL_CNF:-/etc/schedpilot-mysql.cnf}"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -113,13 +114,13 @@ nginx)
 	done
 	;;
 mysql)
-	pgrep -x mysqld >/dev/null 2>&1 || mysqld --defaults-file=/etc/schedpilot-mysql.cnf --daemonize 2>"$RESULTS/mysql-start.log"
+	pgrep -x mysqld >/dev/null 2>&1 || mysqld --defaults-file="$MYSQL_CNF" --daemonize 2>"$RESULTS/mysql-start.log"
 	SERVER_PID="$(pgrep -x mysqld | head -n1 || true)"
 	for _ in $(seq 1 30); do
-		mysqladmin --defaults-file=/etc/schedpilot-mysql.cnf ping >/dev/null 2>&1 && break
+		mysqladmin --defaults-file="$MYSQL_CNF" ping >/dev/null 2>&1 && break
 		sleep 0.5
 	done
-	mysqladmin --defaults-file=/etc/schedpilot-mysql.cnf ping >/dev/null 2>&1 || {
+	mysqladmin --defaults-file="$MYSQL_CNF" ping >/dev/null 2>&1 || {
 		echo "[FAIL] mysqld did not start" >&2; exit 1; }
 	# Scenario v3: mysqld threads co-located with interference on SERVER_CPUS.
 	[ -n "$SERVER_PID" ] && taskset -apc "$SERVER_CPUS" "$SERVER_PID" >/dev/null 2>&1 || true
@@ -135,7 +136,7 @@ cleanup() {
 	case "$WORKLOAD" in
 	redis) [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true ;;
 	nginx) nginx -s stop -c "$ROOT/bench/nginx-schedpilot.conf" >/dev/null 2>&1 || true ;;
-	mysql) mysqladmin --defaults-file=/etc/schedpilot-mysql.cnf shutdown >/dev/null 2>&1 || true ;;
+	mysql) mysqladmin --defaults-file="$MYSQL_CNF" shutdown >/dev/null 2>&1 || true ;;
 	esac
 }
 trap cleanup EXIT INT TERM

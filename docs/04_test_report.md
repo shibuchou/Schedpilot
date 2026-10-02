@@ -25,7 +25,7 @@ formal-2 在固定混部场景下达到并超过 ≥10% 吞吐验收指标（D v
 
 - 主环境：`192.168.1.123:/root`（openEuler 24.03 LTS SP4）。
 - 2026-09-29 开发期间连通性探测（实际执行）：
-  - `Test-NetConnection 222.24.18.171:2233` → `TcpTestSucceeded=False`（SSH 端口映射超时）；
+  - 通过实验网关端口映射探测 SSH（网关公网地址略）：`TcpTestSucceeded=False`（端口映射超时）；
   - 从 rd350x（192.168.1.108）`ping 192.168.1.123` → 100% packet loss；`/dev/tcp/192.168.1.123/22` → no route to host。
 - 结论：SP4 整机离线，sched_ext 加载与性能实验无法执行。恢复后按 `docs/02_test_plan.md` 与 `bench/abcd_experiment.sh` 一键执行。
 
@@ -101,7 +101,7 @@ formal-2 在固定混部场景下达到并超过 ≥10% 吞吐验收指标（D v
 | 项 | 值 |
 |---|---|
 | 宿主 | rd350x（KVM），桥接 phybr0 |
-| 虚拟机 | `schedpilot-sp4` @ 192.168.1.131 / 222.24.18.171:2243，16 vCPU / 32 GiB / 200 GiB |
+| 虚拟机 | `schedpilot-sp4` @ 192.168.1.131（实验内网），16 vCPU / 32 GiB / 200 GiB |
 | OS / kernel | openEuler 24.03 LTS SP4 / **6.6.0-schedpilot**（自编译，`CONFIG_SCHED_CLASS_EXT=y`） |
 | PMU | **可用**（VM 内 `perf stat` 实测 cycles/instructions/cache-refs/cache-misses；multiplex scaling 已实现） |
 | 工具链 | clang 17.0.6 / gcc 12.3.1 / bpftool 7.2.0 / libbpf 1.2.2 / perf 6.6.0 |

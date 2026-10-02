@@ -15,7 +15,7 @@ IF_VM_WORKERS=2
 IF_VM_BYTES="1G"
 THREADS=8
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MYSQL_CNF=/etc/schedpilot-mysql.cnf
+MYSQL_CNF="${MYSQL_CNF:-/etc/schedpilot-mysql.cnf}"
 
 while [ $# -gt 0 ]; do
 	case "$1" in

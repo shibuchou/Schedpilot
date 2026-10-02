@@ -26,6 +26,18 @@ scripts/schedpilotctl.sh status
 scripts/schedpilotctl.sh stop        # 或 rollback
 ```
 
+## 基准负载环境准备
+
+```bash
+# Redis：使用仓库内 bench/redis-schedpilot.conf，实验编排器会自动启动
+# Nginx：dnf install nginx wrk（配置见 bench/nginx-schedpilot.conf，自动启动）
+# MySQL：一条命令完成安装/初始化/授权/sysbench 数据准备
+scripts/setup_mysql.sh
+```
+
+`scripts/setup_mysql.sh` 会把 `bench/mysql-schedpilot.cnf` 安装到 `/etc/schedpilot-mysql.cnf`
+（可用环境变量 `MYSQL_CNF` 覆盖），端口 3307，数据目录 `/var/lib/schedpilot-mysql`。
+
 ## 复现正式实验
 
 ```bash

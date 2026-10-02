@@ -21,11 +21,8 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 | **noif-1** | Redis 无干扰 4 臂 × 10 × 60s | `evidence/sp4-vm/noif-1/` | C/D 吞吐 ±2% 内、p99 −13.2% |
 | **ext-1** | Redis 外部对照 5 臂 × 10 × 60s | `evidence/sp4-vm/ext-1/` | D +118.9%；scx_simple −49.7%（p99 +350%）；scx_flatcg +1.8% |
 
-VM 全量原始数据（每次运行的 workload 输出 / perf stat / daemon JSONL / cfg / 调度器状态 / dmesg）：
-
-```
-schedpilot-sp4:/root/schedpilot/results/{formal-2,mysql-2,nginx-2,noif-1,ext-1,...}
-```
+各实验的完整原始数据（每次运行的 workload 输出 / perf stat / daemon JSONL / cfg / 调度器状态 / dmesg）
+保存在实验机的 `results/<experiment>/` 目录；本仓库 `evidence/sp4-vm/` 归档关键摘要（summary/meta/per_run）。
 
 ## 缺陷与无效数据（如实记录）
 
