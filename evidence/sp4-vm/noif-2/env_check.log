@@ -1,0 +1,41 @@
+=== SchedPilot environment check (2026-10-04T03:29:33+00:00) ===
+label: noif-2
+[OK] os                           openEuler 24.03 (LTS-SP4)
+[OK] kernel                       6.6.0-schedpilot
+[OK] cmdline                      BOOT_IMAGE=/vmlinuz-6.6.0-schedpilot root=UUID=098424f8-99df-4aca-8b6e-66c82e167cbc ro console=tty1 console=ttyS0 rootfstype=ext4 quiet oops=panic softlockup_panic=1 nmi_watchdog=1 rd.shell=0 selinux=0 crashkernel=256M panic=3
+[OK] kernel.config_sched_class_ext CONFIG_SCHED_CLASS_EXT=y
+[OK] kernel.config_debug_info_btf CONFIG_DEBUG_INFO_BTF=y
+[OK] kernel.config_bpf_syscall    CONFIG_BPF_SYSCALL=y
+[OK] btf                          /sys/kernel/btf/vmlinux (5147307 bytes)
+[OK] sched_ext                    state=disabled ops=none
+[OK] clang                        clang version 17.0.6 ( 17.0.6-67.oe2403sp4)
+[OK] tool.gcc                     gcc (GCC) 12.3.1 (openEuler 12.3.1-110.oe2403sp4)
+[OK] tool.make                    GNU Make 4.4.1
+[OK] tool.bpftool                 bpftool v7.2.0
+[OK] tool.perf                    perf version 6.6.0-159.4.16.170.oe2403sp4.x86_64
+[OK] tool.pkg-config              1.9.5
+[OK] libbpf                       1.2.2
+[OK] libbpf.headers               /usr/include/bpf/bpf_helpers.h
+[OK] perf_event_paranoid          2
+[OK] pmu                           825,777 cycles ; 453,959 instructions # 0.55 insn per cycle ;
+[OK] pmu.pmu_device               /sys/bus/event_source/devices/cpu 
+[OK] cpu.model                    Intel(R) Xeon(R) CPU E5-2673 v3 @ 2.40GHz
+[OK] cpu.count                    online=16 threads=16
+[OK] cpu.numa                     1 NUMA node(s)
+[OK] cpu.caches                   64 MiB (16 instances) 256 MiB (16 instances) 
+[OK] cpu.governor                 unavailable
+[OK] mem.total                    31.1 GiB
+[OK] workload.redis-server        /usr/bin/redis-server
+[OK] workload.redis-cli           /usr/bin/redis-cli
+[OK] workload.redis-benchmark     /usr/bin/redis-benchmark
+[WARN] workload.memtier_benchmark   not installed
+[OK] workload.nginx               /usr/sbin/nginx
+[OK] workload.sysbench            /usr/bin/sysbench
+[OK] workload.stress-ng           /usr/bin/stress-ng
+[OK] schedpilot.loader            /root/schedpilot/build/scx_schedpilot
+[OK] schedpilot.daemon            /root/schedpilot/build/schedpilotd
+[OK] schedpilot.pinned_maps       cfg class_map cpu_llc stats tg_stats 
+{"mode":0,"generation":1,"flags":15,"heartbeat_age_s":0,"class_map_entries":0,"pmu_available":true,"pmu_reason":"","dispatch_calls":1342880,"enq_lat":0,"enq_comp":0,"enq_cache":0}
+
+=== summary: OK=34 WARN=1 FAIL=0 ===
+json written: results/noif-2/env_check.json

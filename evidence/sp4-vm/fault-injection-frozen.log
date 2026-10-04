@@ -1,0 +1,11 @@
+[fault] results=results/fault-injection-frozen
+[fault] --- T1: kill loader -KILL, expect sched_ext disabled within 5s ---
+[fault] PASS  loader kill -> state disabled (fair scheduler restored)
+[fault] --- T2: kill daemon -KILL, expect scheduler stays enabled and heartbeat goes stale ---
+[fault] PASS  daemon crash -> scheduler still enabled (BPF fail-open)
+[fault] PASS  heartbeat stale after crash (age=3s >= 2s timeout)
+[fault] PASS  daemon restart -> heartbeat resumed (age=0s)
+[fault] --- T3: rollback, expect disabled and no schedpilot ops ---
+[fault] PASS  rollback command succeeded
+[fault] PASS  state disabled after rollback
+[fault] SUMMARY pass=6 fail=0 results=results/fault-injection-frozen

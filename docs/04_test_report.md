@@ -346,6 +346,9 @@ formal-3 暴露真实回归（D 仅 +16.4%、p99 ≈10ms，且无 watchdog、0 i
 | nginx-4-raw.tar.gz | 86662 | `3b56941af02b2e5af55ad0f41fed131ebfa722f35b8ab4699aaea1021216c6aa` |
 | formal-3-raw.tar.gz（回归证据） | 18880184 | `d494f2929101ac75acb7934f92b86fc28cc0b49fd5a9c251906ceebb525746cd` |
 | nginx-3-raw.tar.gz（冻结佐证） | 86091 | `5b4ae91c71a77a6ec51ebb51d0abaf94d9b9c3455ba8abd70cd2b2bf0853f82b` |
+| noif-2-raw.tar.gz | 674444 | `fd1eff7061379d9ed603cb5faf38b88f21baa10cabc8293eb68497f5ce295c63` |
+| ext-2-raw.tar.gz | 1599672 | `b79b2f622def4fb4b54fcaafb7a26bbfada3a95bd133a0d713376d671905e38c` |
+| fault-soak-frozen-raw.tar.gz | 8449 | `55e9c4fb26aca804da3e4fc5877a65cdfdb1bbb04297200548389b605a4c96f9` |
 
 **formal-4（Redis，7 臂 × 20 × 60s，commit `be962b8`）**：
 
@@ -390,8 +393,24 @@ MySQL D `+85.2%`（10/10）、p99 `−74.8%`；Nginx basic `+50.1%`（20/20）�
 
 **如实保留的限制**：
 
-1. 消融效应在修复后 ≤1.6pp 且 CI 跨 0——BG 收容/LLC/PMU 分类对 Redis 旗舰指标的增量属趋势性，
+1. 消融效应在修复后 ≤2.2pp 且 95% CI 互相重叠——BG 收容/LLC/PMU 分类对 Redis 旗舰指标的增量属趋势性，
    主收益来自 sched_ext 基础 + 三分类路由（B/C 步骤）。
-2. noif-1 / ext-1 / 故障注入 / soak 为冻结前版本数据，未随 `be962b8` 重跑（非审计项，列为后续）；
-   其结论方向不变，冻结版补测为加分项。
-3. Nginx 分类模式（C/D）尾延迟仍为 P1 限制，推荐部署 basic 模式（`scripts/deploy_nginx.sh`）。
+2. Nginx 分类模式（C/D）尾延迟仍为 P1 限制，推荐部署 basic 模式（`scripts/deploy_nginx.sh`）。
+3. 冻结前历史矩阵（formal-2/mysql-2/nginx-2/noif-1/ext-1）保留为方法学对照，结论方向与冻结复跑一致。
+
+**补充冻结复跑（noif-2 / ext-2 / 故障注入 / soak，commit `be962b8`）**：
+
+- **noif-2（Redis 无干扰，A/B/C/D × 10 × 60s，0 无效）**：A 84783 QPS、p99 0.751ms。
+  中位：B −5.3% / p99 −17.6%；C −3.5% / −12.3%；D −3.3% / −11.7%。
+  配对：B `−5.67% [−7.15, −4.19]，10/10 轮更低`；C `−3.20% [−4.00, −2.41]`；D `−3.28% [−4.52, −2.04]`；
+  p99 配对：B −17.59%、C −12.03%、D −11.04%（均 10/10 轮更低）。
+  结论：无干扰下 C/D 吞吐代价 ~3%、尾延迟改善 ~12%；basic（B）吞吐代价更大（~5.7%）、尾延迟改善更多（~17.6%）。
+- **ext-2（Redis 外部对照，A/B/D/X-simple/X-flatcg × 10 × 60s）**：A 17439 QPS。
+  B +65.0%（配对 `+64.72% [60.81, 68.63]，10/10`）；D +175.7%（配对 `+169.62% [158.19, 181.06]，10/10`，p99 −34.86%）；
+  X-simple −51.7%（goodput@SLO −73.6%、p99 +351.9%，10/10 更差）；
+  **X-flatcg 10/10 轮均被内核 watchdog 卸载（`state=disabled`），无有效轮次**（见 `results/ext-2/invalid.log`）——
+  通用示例调度器在该混部场景的不可用性在冻结 commit 上复现。
+- **故障注入（冻结构建）**：**6/6 PASS**（loader kill → sched_ext disabled 回 fair；daemon crash → 保持 enabled、心跳过期、重启恢复；rollback 正常）；
+  日志 `evidence/sp4-vm/fault-injection-frozen.log`。
+- **soak（冻结构建，15 分钟）**：49 周期、errors=0、watchdog_hits=0、final state=enabled、**SOAK PASS**；
+  日志 `evidence/sp4-vm/soak-frozen.log`。

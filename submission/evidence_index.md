@@ -18,6 +18,8 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 | **formal-4** | Redis 7 臂 × 20 × 60s | `evidence/sp4-vm/formal-4/` | **D QPS +169.8% [+164.4, +175.2]，20/20 轮更高**；goodput@SLO +170.2%；p99 −34.7% |
 | **mysql-3** | MySQL 4 臂 × 10 × 60s | `evidence/sp4-vm/mysql-3/` | **D TPS +85.2% [+62.0, +108.3]，10/10**；p99 −74.8% [−82.4, −67.3] |
 | **nginx-4** | Nginx A,B × 20 × 60s | `evidence/sp4-vm/nginx-4/` | **B QPS +50.1% [+35.1, +65.2]，20/20**；p99 −34.1% [−43.5, −24.6]，17/20 轮更低（推荐 basic） |
+| **noif-2** | Redis 无干扰 4 臂 × 10 × 60s | `evidence/sp4-vm/noif-2/` | C/D 吞吐 −3.2%~−3.3%（10/10 轮为负）、p99 −11%~−12%；B −5.7% / p99 −17.6% |
+| **ext-2** | Redis 外部对照 5 臂 × 10 × 60s | `evidence/sp4-vm/ext-2/` | D +169.6% [+158.2, +181.1]；X-simple −51.3% / p99 +351.9%；X-flatcg **10/10 被 watchdog 卸载，无有效轮次** |
 
 各实验的完整原始数据（每次运行的 workload 输出 / perf stat / daemon JSONL / cfg / 调度器状态 / dmesg）
 保存在实验机的 `results/<experiment>/` 目录；本仓库 `evidence/sp4-vm/` 归档关键摘要（summary/meta/per_run/env_check）。
@@ -33,6 +35,9 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 | nginx-4-raw.tar.gz | 86662 | `3b56941af02b2e5af55ad0f41fed131ebfa722f35b8ab4699aaea1021216c6aa` |
 | formal-3-raw.tar.gz（回归证据） | 18880184 | `d494f2929101ac75acb7934f92b86fc28cc0b49fd5a9c251906ceebb525746cd` |
 | nginx-3-raw.tar.gz（冻结佐证） | 86091 | `5b4ae91c71a77a6ec51ebb51d0abaf94d9b9c3455ba8abd70cd2b2bf0853f82b` |
+| noif-2-raw.tar.gz | 674444 | `fd1eff7061379d9ed603cb5faf38b88f21baa10cabc8293eb68497f5ce295c63` |
+| ext-2-raw.tar.gz | 1599672 | `b79b2f622def4fb4b54fcaafb7a26bbfada3a95bd133a0d713376d671905e38c` |
+| fault-soak-frozen-raw.tar.gz | 8449 | `55e9c4fb26aca804da3e4fc5877a65cdfdb1bbb04297200548389b605a4c96f9` |
 
 二进制 SHA256（三实验一致，见各自 `experiment.meta.json`）：
 `scx_schedpilot` `9d1e904ff9ba9dd2ea6aa593a2be1720538a90c489d78d70d12fbf8f54cfd09f`、
@@ -61,8 +66,8 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 
 | 项 | 位置/结果 |
 |---|---|
-| 故障注入（loader/daemon kill、rollback） | `evidence/sp4-vm/fault-injection-final.log`，6/6 PASS |
-| 长稳 soak（D 臂持续压测） | VM `results/soak-final2/`（15 min，0 失速）；`results/soak-final/`（30 min，0 错误） |
+| 故障注入（loader/daemon kill、rollback） | `evidence/sp4-vm/fault-injection-final.log`（冻结前，6/6 PASS）；`evidence/sp4-vm/fault-injection-frozen.log`（`be962b8`，6/6 PASS） |
+| 长稳 soak（D 臂持续压测） | VM `results/soak-final2/`（15 min，0 失速）；`results/soak-final/`（30 min，0 错误）；`evidence/sp4-vm/soak-frozen.log`（`be962b8`，15 min，49 周期，0 失速，PASS） |
 | 单元测试 | `tests/classifier_test.cpp`（`make test`） |
 | 看门狗证据 | VM `dmesg`：修复后各矩阵窗口 0 次 schedpilot 失速；flatcg 被卸载 10 次 |
 
