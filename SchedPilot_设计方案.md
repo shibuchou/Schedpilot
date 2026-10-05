@@ -233,11 +233,12 @@ flowchart TB
 | `DSQ_CACHE`（每 LLC 一个） | 缓存友好任务（M-BOUND） | vtime | 长（~2–6ms） | 软亲和到 LLC 域，降低迁移 |
 | `DSQ_COMP` | 计算密集（C-COMPUTE） | vtime | 中（~1–4ms） | 公平份额，弱亲和 |
 | `DSQ_BATCH` | 吞吐型批处理 | vtime | 长（~6–20ms） | 可被 LAT 抢占 |
-| `DSQ_BG` | 后台干扰（备份、监控、爬虫） | vtime | 长且受限 | 软收容到指定 CPU 范围（借鉴 scx_layered Confined） |
+| `DSQ_BG` | 后台干扰（备份、监控、爬虫） | vtime | 短且受限（2ms；长片会抬高 LAT p99，见 §6.10） | 软收容到指定 CPU 范围（借鉴 scx_layered Confined，P1）+ vtime ×2 惩罚 |
 
 - 类映射键：`TGID`（缺省）→ 支持 `TID` 覆盖（借鉴 Gthulhu：真正被调度的是线程，LLM/DB worker 通常是非 leader 线程）。
 - 生命周期：任务退出/exec 时清理 map（EulerPilot 原型用 hash；生产版需处理 PID wrap，可用 `task_storage`/`fentry` 或 LRU + `ops.enable/disable` 兜底）。
-- 饥饿保护：所有 DSQ 在任何状态下都必须被 dispatch 消费（沿用原型的"stale classified tasks"思路），加 starvation rescue 时间下限。
+- 饥饿保护：所有 DSQ 必须被 dispatch 消费，非 LAT 类通过 CACHE/COMP DSQ 轮转与短切片获得有界服务。
+  （原"anti-starvation rescue 时间下限"守卫经实测会抬高 LAT p99，已回退，见测试报告 §6.10。）
 
 ---
 
@@ -302,7 +303,7 @@ flowchart TB
 
 | 风险 | 对策 |
 |---|---|
-| BPF 调度器挂死/饥饿 | `SCX_OPS` 内置 watchdog 超时自动 abort 回默认 fair 调度器；starvation rescue 下限；tick 轮转扫描 |
+| BPF 调度器挂死/饥饿 | `SCX_OPS` 内置 watchdog 超时自动 abort 回默认 fair 调度器；非 LAT 类由 DSQ 轮转 + 短切片保证有界推进（守卫式 rescue 已回退，见 §6.10）；tick 轮转扫描 |
 | 用户态 daemon 崩溃 | 心跳检测；策略停止更新则 BPF 保持最后一版安全参数（带过期降级）；可配置直接 detach |
 | 恶意/异常负载 | 类映射白名单 + 目标限定（cgroup/PID/TID），非目标任务走安全共享 DSQ（vtime 公平） |
 | verifier/编译兼容 | 锁定 clang/libbpf/kernel 版本；CI 中做多版本矩阵编译 |

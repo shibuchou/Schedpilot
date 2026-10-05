@@ -349,6 +349,8 @@ formal-3 暴露真实回归（D 仅 +16.4%、p99 ≈10ms，且无 watchdog、0 i
 | noif-2-raw.tar.gz | 674444 | `fd1eff7061379d9ed603cb5faf38b88f21baa10cabc8293eb68497f5ce295c63` |
 | ext-2-raw.tar.gz | 1599672 | `b79b2f622def4fb4b54fcaafb7a26bbfada3a95bd133a0d713376d671905e38c` |
 | fault-soak-frozen-raw.tar.gz | 8449 | `55e9c4fb26aca804da3e4fc5877a65cdfdb1bbb04297200548389b605a4c96f9` |
+| nginx-5-raw.tar.gz | 2080970 | `fcc394d0b5ddd93a33145246fed4dddb137e4d7ae998d53325b596045e142597` |
+| smoke-cleanup-raw.tar.gz | 160111 | `9076f70d4c7335e351f15dc5ab256c3d5d424e6f2f81dbabb9b52580611db288` |
 
 **formal-4（Redis，7 臂 × 20 × 60s，commit `be962b8`）**：
 
@@ -395,8 +397,51 @@ MySQL D `+85.2%`（10/10）、p99 `−74.8%`；Nginx basic `+50.1%`（20/20）�
 
 1. 消融效应在修复后 ≤2.2pp 且 95% CI 互相重叠——BG 收容/LLC/PMU 分类对 Redis 旗舰指标的增量属趋势性，
    主收益来自 sched_ext 基础 + 三分类路由（B/C 步骤）。
-2. Nginx 分类模式（C/D）尾延迟仍为 P1 限制，推荐部署 basic 模式（`scripts/deploy_nginx.sh`）。
+2. Nginx 分类模式：旧 P1 尾延迟问题已消除（nginx-5，n=10 探索性复检：C +127.4%、p99 −64.9%，均 10/10）；
+   `scripts/deploy_nginx.sh` 默认已切到 adaptive（`--mode basic` 回退）；n=20 大样本确认列为可选后续。
 3. 冻结前历史矩阵（formal-2/mysql-2/nginx-2/noif-1/ext-1）保留为方法学对照，结论方向与冻结复跑一致。
+
+### 6.11 资源与开销指标（perf stat 汇总，Redis formal-4）
+
+`perf stat -p <redis-server>` 每次窗口 60s，取 20 轮中位数（原始文件在各 run 的 `perf_stat.txt`）：
+
+| arm | CPU 占用 | 上下文切换/s | CPU 迁移/s | IPC | LLC MPKI |
+|---|---|---|---|---|---|
+| A（默认 fair） | 16.7% | 238 | 0 | 0.694 | 0.93 |
+| B（basic） | 26.8% | 426 | 420 | 0.754 | 0.68 |
+| C（分类，静态切片） | 48.2% | 1122 | 437 | 0.734 | 0.36 |
+| D（分类+自适应） | 49.9% | 1115 | 426 | 0.724 | 0.35 |
+
+读法与口径（如实）：
+
+- A 在混部下只获得 **16.7%** 的 CPU 时间（Redis 被判分器与干扰压制）；B/C/D 分别拿到 26.8%/48.2%/49.9%，
+  吞吐提升主要由"服务实际拿到更多 CPU"驱动（D 用 ~3× CPU 换 ~2.7× QPS，非虚报）。
+- 上下文切换：LAT 短切片主动轮转让 C/D 的 csw 升至 ~1.1k/s（A 为 238/s）——这是设计行为，换得 p99 2.9ms。
+- CPU 迁移：A 几乎不迁移（0/s），C/D ~430/s——LAT 唤醒时快速落到可用 CPU 的代价；消融 `d-no-llc` 无显著变化
+  （该 VM 每 vCPU 独立 L3 域，LLC 路由已被 daemon 自动关闭）。
+- LLC MPKI：0.93（A）→0.35（C/D），与更短驻留、更热的执行一致。
+- **开销口径**：上表是 redis-server 进程自身计数；调度器自身开销（daemon CPU、BPF 运行时间）未单独折算，
+  由"决策周期 100ms、故障/长稳 0 失速、正式矩阵 0 watchdog"作定性保证；精确 overhead 折算列为 P1。
+
+### 6.12 SP3 内核兼容验证（2026-10-05，RD350x KVM）
+
+- **环境**：openEuler 24.03 LTS-SP3 虚拟机（自建 kickstart 安装，8 vCPU / 16 GiB / 桥接）。
+  发行版内核 `6.6.0-132.0.0.111.oe2403sp3` **未启用** `CONFIG_SCHED_CLASS_EXT`（与 SP4 相同）；
+  以 SP3 源码（`kernel-source-6.6.0-145.3.34.165.oe2403sp3`）重建 `6.6.0-schedpilot-sp3`：
+  仅新增 `CONFIG_SCHED_CLASS_EXT=y`、`CONFIG_EXT_GROUP_SCHED=y`，清空 `SYSTEM_TRUSTED_KEYS`/`MODULE_SIG_KEY`，
+  `LOCALVERSION=-schedpilot-sp3`（与 SP4 的构建方法一致）；grub 默认项已持久切换并通过重启验证。
+- **构建与运行**：仓库代码零改动，`scripts/build.sh --kernel-src <SP3 源码树>` 全量编译通过
+  （唯一缺依赖 `ld.lld`，`dnf install lld` 补齐）；`make test` 通过；
+  `schedpilotctl.sh start --mode adaptive` → `state=enabled ops=schedpilot`；
+  15s stress-ng（4×cpu matrixprod）压测期间 **0 次 watchdog/stall**，rollback 正常。
+- **env_check**：OK=30 WARN=4 FAIL=1——唯一 FAIL 为 `tool.perf` 未安装（不影响调度器本身；该 VM 无 perf 统计，
+  故 SP3 侧不做 csw/MPKI 口径）。
+- **Redis 迷你对照（A vs D，2×20s，快速可用性验证）**：A 18811 QPS / p99 4.51ms；
+  **D 43073 QPS（+129.0%）/ p99 3.13ms（−30.6%）**（配对 +130.1% / −30.6%，2/2 轮），
+  方向与 SP4 正式矩阵一致；样本小，仅作跨内核可用性佐证，并入正式统计。
+- **证据**：`evidence/sp3-vm/`（env_check、build.log、sp3-hello 摘要）；归档
+  `sp3-evidence.tar.gz`（1.2 MB）sha256 `e46976c23e1cb3030efd0895c853a2c1accb706d040bcfab371e567e3c128a5c`。
+- **结论**：**SP3 兼容验证通过**（构建 / 加载 / 运行 / 性能方向）；SP1 未验证，列为可选后续。
 
 **补充冻结复跑（noif-2 / ext-2 / 故障注入 / soak，commit `be962b8`）**：
 
@@ -414,3 +459,8 @@ MySQL D `+85.2%`（10/10）、p99 `−74.8%`；Nginx basic `+50.1%`（20/20）�
   日志 `evidence/sp4-vm/fault-injection-frozen.log`。
 - **soak（冻结构建，15 分钟）**：49 周期、errors=0、watchdog_hits=0、final state=enabled、**SOAK PASS**；
   日志 `evidence/sp4-vm/soak-frozen.log`。
+- **nginx-5（分类模式复检，2026-10-05，A/B/C/D × 10×60s，0 无效）**：A 18997 QPS / p99 10.98ms；
+  B +37.7% / −35.8%；**C +127.4%（配对 +124.75% [102.57, 146.94]，10/10 轮更高）/ p99 −64.9%（配对 −62.54% [−68.44, −56.64]，10/10 轮更低）**；
+  D +91.4% / −54.0%。结论：**分类模式（C）在 Nginx 上同时优于 basic 与 fair**——旧 P1 尾延迟问题（nginx-2 时代与迁移的交互）
+  已随迁移惩罚上限、退化 LLC 关路由、BG 短切片等修复消除。`scripts/deploy_nginx.sh` 默认模式改为 adaptive
+  （`--mode basic` 可回退；分类复检样本 n=10，属探索性结论，n=20 大样本确认列为可选后续）。

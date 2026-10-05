@@ -4,7 +4,7 @@
 
 - 赛题：华为命题《基于 BPF/sched_ext 的用户态高性能动态调度器》（国产操作系统软件组）
 - 状态：**v0.3.1 冻结复跑完成**（commit `be962b8`，Redis 混部场景 D vs 默认 fair baseline **QPS 配对 +169.8%，20/20 轮更高**，n=20）
-- 主环境：**openEuler 24.03 LTS SP4**（冻结）；SP1/SP3 仅作有时间时的兼容验证
+- 主环境：**openEuler 24.03 LTS SP4**（冻结矩阵）；**SP3 兼容验证通过**（自编译 sched_ext 内核，见 §6.12）；SP1 未验证
 - Baseline 口径：**openEuler 默认 fair-class 调度器（赛题表述为默认 CFS）**；不把 Linux 6.6 fair-class 内部实现等同于经典 CFS
 
 ## 核心结果（场景 v3：服务与干扰同 CPU 集，客户端隔离；冻结矩阵 commit `be962b8`）
@@ -13,7 +13,7 @@
 |---|---|---|---|
 | Redis | formal-4（7 臂×20×60s） | **D 全自适应** | **QPS +169.8%（95% CI [+164.4%, +175.2%]，20/20 轮更高）**；固定 SLO(5ms) goodput +170.2%；p99 −34.7% |
 | MySQL | mysql-3（4 臂×10×60s） | **D 全自适应**（C 名义接近，差异在噪声内） | **TPS +85.2% [62.0, 108.3]**，p99 −74.8% [−82.4, −67.3] |
-| Nginx | nginx-4（A,B×20×60s） | **B basic（推荐，`scripts/deploy_nginx.sh`）** | **QPS +50.1% [35.1, 65.2]**，p99 −34.1% [−43.5, −24.6]（17/20 轮更低） |
+| Nginx | nginx-5（分类模式复检，4 臂×10×60s） | **C 分类模式（`scripts/deploy_nginx.sh` 默认）** | **QPS +124.8% [102.6, 146.9]，10/10**；p99 −62.5% [−68.4, −56.6]（basic 回退 `--mode basic`，+50.1%） |
 
 冻结证据（git commit + 二进制 SHA256 + 原始数据归档 + 0 无效轮次）见 `docs/04_test_report.md` §6.10；
 其中含 formal-3 回归的发现、消融根因（BG 切片 10ms→2ms 修复）与负结果保留。
@@ -83,6 +83,7 @@ scripts/schedpilotctl.sh rollback
 ## 文档
 
 - 测试报告（含正式矩阵、消融、负结果）：`docs/04_test_report.md`
+- **10 分钟演示流程（评审现场版，命令全实测）**：`docs/05_demo_runbook.md`
 - 测试方案（场景 v2、客户端隔离、PMU scaling）：`docs/02_test_plan.md`
 - 部署与回滚：`docs/03_deploy_rollback.md`
 - MVP 范围与 P1/P2：`docs/00_mvp_scope.md`

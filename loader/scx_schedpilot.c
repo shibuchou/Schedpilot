@@ -175,7 +175,6 @@ static void init_cfg_defaults(int fd, __u32 mode)
 		.cache_slice_ns = 8000000ULL,
 		.bg_slice_ns = 2000000ULL,
 		.preempt_thresh_ns = 500000ULL,
-		.starvation_ns = 20000000ULL,
 		.migrate_penalty_ns = 2000000ULL,
 		.lat_vtime_pct = 100,
 		.bg_vtime_pct = 200,

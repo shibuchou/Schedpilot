@@ -21,9 +21,11 @@
 | 测试方案 | `docs/02_test_plan.md` |
 | MVP 范围 | `docs/00_mvp_scope.md` |
 | 测试报告（含正式矩阵与负结果） | `docs/04_test_report.md` |
+| 10 分钟演示流程（评审现场版） | `docs/05_demo_runbook.md` |
 | 设计方案（含长期 roadmap） | `SchedPilot_设计方案.md` |
 | 证据索引 | `submission/evidence_index.md` |
 | 一键演示 | `scripts/demo.sh` |
+| Nginx 部署入口（adaptive 推荐 / basic 回退） | `scripts/deploy_nginx.sh` |
 
 ## 复现入口
 
@@ -31,7 +33,7 @@
 scripts/env_check.sh --json evidence/sp4-vm/env_check.json
 scripts/build.sh --kernel-src /usr/src/linux-6.6.0-<ver>.oe2403sp4.x86_64 --install
 bench/abcd_experiment.sh --workload redis --runs 20 --duration 60 --warmup 10 \
-  --arms A,B,C,D,d-no-pmu,d-no-llc,d-no-bg --results results/formal-2
+  --arms A,B,C,D,d-no-pmu,d-no-llc,d-no-bg --results results/formal-4
 ```
 
 Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 CFS）。

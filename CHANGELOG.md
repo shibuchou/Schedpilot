@@ -30,6 +30,20 @@
   p99 −12%；外部对照 X-simple −51.7%（p99 +351.9%）、**X-flatcg 10/10 轮被 watchdog 卸载（无有效轮次）**；
   故障注入 6/6 PASS；15 分钟 soak 49 周期 0 失速 PASS；归档 SHA256 见 §6.10。
 
+## v0.3.2 — 复审优化（2026-10-05）
+
+- **Nginx 分类模式转正（nginx-5）**：迁移惩罚上限 + 退化 LLC 关路由 + BG 短切片修复后，分类模式（C）
+  在 Nginx 上同时优于 basic 与 fair：**+127.4% QPS、p99 −64.9%（配对 +124.75% / −62.54%，均 10/10，n=10 探索性）**；
+  `scripts/deploy_nginx.sh` 默认改为 adaptive（`--mode basic` 可回退）。
+- **死代码清理（行为等价）**：移除已回退的 anti-starvation 守卫遗留（`cfg.starvation_ns`、`SP_DEF_STARVE_NS`、
+  `pcpu_state` 槽位 3→2），`SP_INTF_VERSION` 1→2；smoke 复跑：D +190.1%、p99 −34.3%（3/3）。
+- **资源指标与演示材料**：§6.11 汇总 perf stat（CPU/切换/迁移/IPC/MPKI）；新增 `docs/05_demo_runbook.md`
+  （10 分钟评审演示流程，全部命令已在 VM 实测）。
+- **SP3 内核兼容验证（§6.12）**：openEuler SP3 自建 VM + 自编译 `6.6.0-schedpilot-sp3`
+  （仅加 `SCHED_CLASS_EXT`）；零改动编译 + `make test` + 加载运行通过、15s 压测 0 失速；
+  Redis 迷你 A/D：**D +129.0% QPS / p99 −30.6%**（2×20s，方向与 SP4 一致）；
+  证据 `evidence/sp3-vm/`，归档 sha256 `e46976c2…`。
+
 ## v0.3.0-mvp — 省赛最小闭环（2026-09-29 → 2026-10-01）
 
 ### 最终修复轮（三负载与稳定性）

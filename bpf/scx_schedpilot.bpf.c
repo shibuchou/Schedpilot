@@ -29,7 +29,6 @@ UEI_DEFINE(uei);
 #define SP_DEF_BG_SLICE_NS     2000000ULL
 #define SP_DEF_PREEMPT_NS       500000ULL
 #define SP_DEF_MIGRATE_PEN_NS  2000000ULL
-#define SP_DEF_STARVE_NS      20000000ULL
 #define SP_MAX_MIG_PEN_NS      8000000ULL
 #define SP_DEF_BG_VTIME_PCT         200u
 #define SP_MAX_RUN_DELAY_NS  1000000000ULL
@@ -86,13 +85,12 @@ struct {
 	__uint(max_entries, SP_NR_STATS);
 } stats SEC(".maps");
 
-/* [0] = last preempt kick ns, [1] = cache/comp dispatch toggle,
- * [2] = last non-LAT dispatch ns (anti-starvation guard) */
+/* [0] = last preempt kick ns, [1] = cache/comp dispatch toggle */
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(key_size, sizeof(u32));
 	__uint(value_size, sizeof(u64));
-	__uint(max_entries, 3);
+	__uint(max_entries, 2);
 } pcpu_state SEC(".maps");
 
 static u64 vtime_now_comp;

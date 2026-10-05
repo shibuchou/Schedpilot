@@ -1,0 +1,37 @@
+# SchedPilot experiment summary
+
+- results: `results/nginx-5`
+- baseline arm: **A** (openEuler default fair-class scheduler; competition text: default CFS)
+- delta is (arm - baseline) / baseline; negative latency delta = better
+
+| arm | n | QPS median [IQR] | QPS delta | goodput@SLO median | goodput delta | p99 med (ms) | p99 delta | p99 delta 95% CI | p99 p-value |
+|---|---|---|---|---|---|---|---|---|---|
+| A | 10 | 18997.100 [743.260] | +0.0% | - | - | 10.980 [0.420] | +0.0% | - | - |
+| B | 10 | 26151.785 [447.240] | +37.7% | - | - | 7.050 [0.110] | -35.8% | [-44.5%, -23.4%] | 0.0024 |
+| C | 10 | 43197.670 [2015.140] | +127.4% | - | - | 3.855 [0.320] | -64.9% | [-74.2%, -53.0%] | 0.0002 |
+| D | 10 | 36358.630 [1712.620] | +91.4% | - | - | 5.050 [0.370] | -54.0% | [-63.5%, -42.2%] | 0.0002 |
+
+## Attribution chain
+
+| step | comparison | QPS delta (median) | p99 delta (median) |
+|---|---|---|---|
+| sched_ext effect | B vs A | +37.7% | -35.8% |
+| classification effect | C vs B | +65.2% | -45.3% |
+| adaptive policy effect | D vs C | -15.8% | +31.0% |
+| total effect | D vs A | +91.4% | -54.0% |
+
+## Paired per-run comparison vs baseline (same run index)
+
+Mean of per-run paired deltas with 95% CI; `higher`/`lower` are the
+number of runs where the arm was above/below the baseline for that metric.
+
+| arm | metric | n | mean Δ% | 95% CI | runs higher | runs lower |
+|---|---|---|---|---|---|---|
+| B | qps | 10 | +37.08% | [+23.99%, +50.17%] | 9 | 1 |
+| B | p99 | 10 | -31.99% | [-42.59%, -21.39%] | 1 | 9 |
+| C | qps | 10 | +124.75% | [+102.57%, +146.94%] | 10 | 0 |
+| C | p99 | 10 | -62.54% | [-68.44%, -56.64%] | 0 | 10 |
+| D | qps | 10 | +88.41% | [+72.29%, +104.53%] | 10 | 0 |
+| D | p99 | 10 | -51.76% | [-58.01%, -45.51%] | 0 | 10 |
+
+written: results/nginx-5/summary.md, summary.csv, per_run.csv

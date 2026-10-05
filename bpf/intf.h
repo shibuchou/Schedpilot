@@ -13,7 +13,7 @@
 #include <linux/types.h>
 #endif
 
-#define SP_INTF_VERSION 1
+#define SP_INTF_VERSION 2
 
 /* control modes */
 #define SP_MODE_BASIC    0 /* B: single shared DSQ (basic sched_ext) */
@@ -62,7 +62,6 @@ struct sp_cfg {
 	__u64 cache_slice_ns;
 	__u64 bg_slice_ns;
 	__u64 preempt_thresh_ns;
-	__u64 starvation_ns;
 	__u64 migrate_penalty_ns;
 	__u32 lat_vtime_pct;
 	__u32 bg_vtime_pct;

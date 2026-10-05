@@ -17,7 +17,8 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 |---|---|---|---|
 | **formal-4** | Redis 7 臂 × 20 × 60s | `evidence/sp4-vm/formal-4/` | **D QPS +169.8% [+164.4, +175.2]，20/20 轮更高**；goodput@SLO +170.2%；p99 −34.7% |
 | **mysql-3** | MySQL 4 臂 × 10 × 60s | `evidence/sp4-vm/mysql-3/` | **D TPS +85.2% [+62.0, +108.3]，10/10**；p99 −74.8% [−82.4, −67.3] |
-| **nginx-4** | Nginx A,B × 20 × 60s | `evidence/sp4-vm/nginx-4/` | **B QPS +50.1% [+35.1, +65.2]，20/20**；p99 −34.1% [−43.5, −24.6]，17/20 轮更低（推荐 basic） |
+| **nginx-4** | Nginx A,B × 20 × 60s | `evidence/sp4-vm/nginx-4/` | **B QPS +50.1% [+35.1, +65.2]，20/20**；p99 −34.1% [−43.5, −24.6]，17/20 轮更低（basic） |
+| **nginx-5** | Nginx 分类模式复检 A,B,C,D × 10 × 60s | `evidence/sp4-vm/nginx-5/` | **C 分类模式 +124.8% [+102.6, +146.9]，10/10；p99 −62.5% [−68.4, −56.6]，10/10**（P1 尾延迟问题消除；`deploy_nginx.sh` 默认 adaptive） |
 | **noif-2** | Redis 无干扰 4 臂 × 10 × 60s | `evidence/sp4-vm/noif-2/` | C/D 吞吐 −3.2%~−3.3%（10/10 轮为负）、p99 −11%~−12%；B −5.7% / p99 −17.6% |
 | **ext-2** | Redis 外部对照 5 臂 × 10 × 60s | `evidence/sp4-vm/ext-2/` | D +169.6% [+158.2, +181.1]；X-simple −51.3% / p99 +351.9%；X-flatcg **10/10 被 watchdog 卸载，无有效轮次** |
 
@@ -38,6 +39,18 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 | noif-2-raw.tar.gz | 674444 | `fd1eff7061379d9ed603cb5faf38b88f21baa10cabc8293eb68497f5ce295c63` |
 | ext-2-raw.tar.gz | 1599672 | `b79b2f622def4fb4b54fcaafb7a26bbfada3a95bd133a0d713376d671905e38c` |
 | fault-soak-frozen-raw.tar.gz | 8449 | `55e9c4fb26aca804da3e4fc5877a65cdfdb1bbb04297200548389b605a4c96f9` |
+| nginx-5-raw.tar.gz（分类模式复检） | 2080970 | `fcc394d0b5ddd93a33145246fed4dddb137e4d7ae998d53325b596045e142597` |
+| smoke-cleanup-raw.tar.gz（死代码清理等价性 smoke） | 160111 | `9076f70d4c7335e351f15dc5ab256c3d5d424e6f2f81dbabb9b52580611db288` |
+| sp3-evidence.tar.gz（SP3 兼容验证） | 1229434 | `e46976c23e1cb3030efd0895c853a2c1accb706d040bcfab371e567e3c128a5c` |
+
+## 跨内核兼容（SP3，2026-10-05）
+
+| 项 | 位置 | 结论 |
+|---|---|---|
+| SP3 自建 VM + `6.6.0-schedpilot-sp3` 自编译内核 | `evidence/sp3-vm/`（env_check / build.log） | 零改动编译通过、`make test` 通过、加载运行正常、15s 压测 0 失速 |
+| Redis 迷你 A/D（2×20s） | `evidence/sp3-vm/sp3-hello/` | **D +129.0% QPS / p99 −30.6%**（方向与 SP4 一致，小样本） |
+
+SP3 唯一 env_check FAIL 为 `tool.perf` 未安装（如实记录，不影响调度器）；SP1 未验证。
 
 二进制 SHA256（三实验一致，见各自 `experiment.meta.json`）：
 `scx_schedpilot` `9d1e904ff9ba9dd2ea6aa593a2be1720538a90c489d78d70d12fbf8f54cfd09f`、
