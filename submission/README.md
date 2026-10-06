@@ -22,6 +22,7 @@
 | MVP 范围 | `docs/00_mvp_scope.md` |
 | 测试报告（含正式矩阵与负结果） | `docs/04_test_report.md` |
 | 10 分钟演示流程（评审现场版） | `docs/05_demo_runbook.md` |
+| 答辩材料包（PPT 提纲 + 视频脚本 + Q&A） | `submission/defense_pack.md` |
 | 设计方案（含长期 roadmap） | `SchedPilot_设计方案.md` |
 | 证据索引 | `submission/evidence_index.md` |
 | 一键演示 | `scripts/demo.sh` |

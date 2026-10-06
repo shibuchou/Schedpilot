@@ -27,6 +27,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -109,31 +110,119 @@ static std::string read_comm(uint32_t tgid)
 	return trim(s);
 }
 
-static std::map<uint32_t, std::string>
+struct ProcEntry {
+	std::string comm;
+	bool bg = false;
+};
+
+// Collect thread-group leaders (TGIDs) from a cgroup v2 subtree: the
+// cgroup.procs of the directory itself and of every descendant. Used for
+// container / systemd scope based targeting; results are merged with the
+// name-based scan. A path is accepted only if it is absolute and looks like
+// a cgroup v2 directory (contains cgroup.controllers), so on systems with a
+// legacy v1 layout the test can mount cgroup2 anywhere (e.g. /mnt/cgroup2).
+static void collect_cgroup_pids(const std::string &path,
+				std::set<uint32_t> &out)
+{
+	namespace fs = std::filesystem;
+	std::error_code ec;
+	if (path.empty() || path[0] != '/') {
+		log(LogLevel::Warn, "cgroup path rejected (not absolute): %s",
+		    path.c_str());
+		return;
+	}
+	if (!fs::is_regular_file(fs::path(path) / "cgroup.controllers", ec)) {
+		log(LogLevel::Warn,
+		    "cgroup path rejected (no cgroup.controllers; cgroup v2 required): %s",
+		    path.c_str());
+		return;
+	}
+	auto read_procs = [&out](const fs::path &dir) {
+		std::ifstream in(dir / "cgroup.procs");
+		std::string line;
+		while (std::getline(in, line)) {
+			line = trim(line);
+			if (line.empty())
+				continue;
+			try {
+				out.insert((uint32_t)std::stoul(line));
+			} catch (...) {
+			}
+		}
+	};
+	// The recursive iterator yields children only: read the root cgroup
+	// itself (cgroup.procs of the given path) first, then all descendants.
+	read_procs(path);
+	fs::recursive_directory_iterator it(
+		path, fs::directory_options::skip_permission_denied, ec);
+	if (ec) {
+		log(LogLevel::Warn, "cgroup path unreadable: %s", path.c_str());
+		return;
+	}
+	for (auto end = fs::recursive_directory_iterator(); it != end;
+	     it.increment(ec)) {
+		if (ec) {
+			log(LogLevel::Warn, "cgroup walk stopped at %s", path.c_str());
+			return;
+		}
+		if (!it->is_directory())
+			continue;
+		read_procs(it->path());
+	}
+}
+
+static std::map<uint32_t, ProcEntry>
 scan_targets(const DaemonSettings &s)
 {
-	std::map<uint32_t, std::string> found;
-	DIR *dir = opendir("/proc");
-	if (!dir)
-		return found;
-
+	std::map<uint32_t, ProcEntry> found;
 	pid_t self = getpid();
-	struct dirent *de;
-	while ((de = readdir(dir)) != nullptr) {
-		if (de->d_name[0] < '0' || de->d_name[0] > '9')
-			continue;
-		uint32_t tgid = (uint32_t)atoi(de->d_name);
+
+	std::set<uint32_t> cg_target, cg_bg;
+	for (const auto &p : s.target_cgroups)
+		collect_cgroup_pids(p, cg_target);
+	for (const auto &p : s.bg_cgroups)
+		collect_cgroup_pids(p, cg_bg);
+
+	auto add_entry = [&](uint32_t tgid, bool from_bg_cgroup) {
 		if ((pid_t)tgid == self)
-			continue;
+			return;
 		std::string comm = read_comm(tgid);
 		if (comm.empty())
-			continue;
+			return;
 		if (match_exact_name(comm, s.excludes))
-			continue;
-		if (match_proc_name(comm, s.targets) || match_proc_name(comm, s.bg))
-			found[tgid] = comm;
+			return;
+		ProcEntry e;
+		e.comm = comm;
+		e.bg = from_bg_cgroup || cg_bg.count(tgid) != 0 ||
+		       match_proc_name(comm, s.bg);
+		auto it = found.find(tgid);
+		if (it == found.end() || (e.bg && !it->second.bg))
+			found[tgid] = e;
+	};
+
+	DIR *dir = opendir("/proc");
+	if (dir) {
+		struct dirent *de;
+		while ((de = readdir(dir)) != nullptr) {
+			if (de->d_name[0] < '0' || de->d_name[0] > '9')
+				continue;
+			uint32_t tgid = (uint32_t)atoi(de->d_name);
+			std::string comm = read_comm(tgid);
+			if (comm.empty())
+				continue;
+			if (!match_proc_name(comm, s.targets) &&
+			    !match_proc_name(comm, s.bg))
+				continue;
+			add_entry(tgid, false);
+		}
+		closedir(dir);
 	}
-	closedir(dir);
+
+	for (uint32_t tgid : cg_target)
+		add_entry(tgid, false);
+	for (uint32_t tgid : cg_bg)
+		add_entry(tgid, true);
+
 	return found;
 }
 
@@ -678,8 +767,8 @@ int main(int argc, char **argv)
 				if (!targets.count(kv.first)) {
 					Target t;
 					t.tgid = kv.first;
-					t.comm = kv.second;
-					t.bg = match_proc_name(kv.second, settings.bg);
+					t.comm = kv.second.comm;
+					t.bg = kv.second.bg;
 					targets.emplace(kv.first, t);
 					log(LogLevel::Info,
 					    "tracking %s tgid=%u%s",

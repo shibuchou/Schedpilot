@@ -32,8 +32,8 @@
 
 ## v0.3.2 — 复审优化（2026-10-05）
 
-- **Nginx 分类模式转正（nginx-5）**：迁移惩罚上限 + 退化 LLC 关路由 + BG 短切片修复后，分类模式（C）
-  在 Nginx 上同时优于 basic 与 fair：**+127.4% QPS、p99 −64.9%（配对 +124.75% / −62.54%，均 10/10，n=10 探索性）**；
+- **Nginx 分类模式转正（nginx-5 → nginx-6 正式确认）**：迁移惩罚上限 + 退化 LLC 关路由 + BG 短切片修复后，分类模式（C）
+  在 Nginx 上同时优于 basic 与 fair：**nginx-6（n=20，0 无效）C 配对 +143.11% [118.66, 167.56]（20/20）、p99 −66.25%（20/20）**；
   `scripts/deploy_nginx.sh` 默认改为 adaptive（`--mode basic` 可回退）。
 - **死代码清理（行为等价）**：移除已回退的 anti-starvation 守卫遗留（`cfg.starvation_ns`、`SP_DEF_STARVE_NS`、
   `pcpu_state` 槽位 3→2），`SP_INTF_VERSION` 1→2；smoke 复跑：D +190.1%、p99 −34.3%（3/3）。
@@ -43,6 +43,10 @@
   （仅加 `SCHED_CLASS_EXT`）；零改动编译 + `make test` + 加载运行通过、15s 压测 0 失速；
   Redis 迷你 A/D：**D +129.0% QPS / p99 −30.6%**（2×20s，方向与 SP4 一致）；
   证据 `evidence/sp3-vm/`，归档 sha256 `e46976c2…`。
+- **容器/cgroup 目标选择（P1 已实现）**：daemon 新增 `targets.cgroup_paths` / `bg.cgroup_paths`
+  （cgroup v2 子树递归扫描 `cgroup.procs`，路径白名单校验，可与按名匹配叠加）；
+  示例配置 `configs/cgroup-demo.conf` + 回归测试 `tests/test_cgroup_targeting.sh`（dry-run，无需调度器）；
+  部署说明见 `docs/03_deploy_rollback.md` §3.1。
 
 ## v0.3.0-mvp — 省赛最小闭环（2026-09-29 → 2026-10-01）
 

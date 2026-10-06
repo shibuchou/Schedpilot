@@ -432,7 +432,7 @@ flowchart TB
 | 阶段 | 计划时间 | 重点任务 | 阶段出口 |
 |---|---|---|---|
 | 报名与校赛阶段 | 2026-08-30 – 2026-09-25 | 完成 openEuler SP4 能力探测；基础 sched_ext 加载、map、DSQ 和回退闭环；完成裸机/进程或 cgroup Redis 混部；完成 default fair、基础 sched_ext、分类调度三组初测；接入 runtime、wakeup、CPU PSI 和初步 IPC/LLC 特征 | 可现场证明 scheduler active、任务分类、DSQ dispatch 和安全回退，并有第一版可重复实验记录 |
-| 省赛强化阶段 | 2026-09-26 – 2026-10-31 | 完善 CPU、LLC、NUMA 和 memory locality 特征；完成 per-CPU/LLC/NUMA 多级 DSQ、adaptive slice、migration cost、aging、starvation protection；完成消融、至少 20 次核心重复、watchdog 和长稳测试；开展容器/cgroup 适配 | 在固定环境和真实 ACTIVE policy 下完成 Redis 核心指标不低于 10% 的性能验收，并完成统计与策略归因 |
+| 省赛强化阶段 | 2026-09-26 – 2026-10-31 | 完善 CPU、LLC、NUMA 和 memory locality 特征；完成 per-CPU/LLC/NUMA 多级 DSQ、adaptive slice、migration cost、aging、starvation protection；完成消融、至少 20 次核心重复、watchdog 和长稳测试；**已完成 cgroup 选择适配（`configs/cgroup-demo.conf` + `tests/test_cgroup_targeting.sh`，cgroup v2 子树递归目标选择）**；更完整的容器感知（cgroup 反馈优先级、容器资源模型）列 P1 | 在固定环境和真实 ACTIVE policy 下完成 Redis 核心指标不低于 10% 的性能验收，并完成统计与策略归因 |
 | 总决赛完善阶段 | 2026-11-01 – 2026-11-30 | 扩展 Nginx、MySQL、RPC 和计算型 workload adapter；完成 Dashboard、一键演示、安装/升级/回滚和内核兼容性矩阵；汇总性能报告、工程文档、视频和答辩材料 | 形成 SchedPilot v1.0 release candidate 和完整可交付证据包 |
 
 ### 8.2 长期 roadmap（12 周实施拆分，保留）

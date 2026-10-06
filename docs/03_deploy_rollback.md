@@ -41,6 +41,25 @@ scripts/env_check.sh && make && scripts/schedpilotctl.sh start --mode adaptive \
   && bench/abcd_experiment.sh --runs 3 --duration 30 --arms D   # 演示版快速曲线
 ```
 
+## 3.1 容器 / cgroup 目标选择（P1 已实现）
+
+除按进程名选择目标外，daemon 支持按 **cgroup v2 子树**选择（容器、systemd scope/slice、
+Podman/Docker 场景）：配置 `targets.cgroup_paths` / `bg.cgroup_paths`，递归读取每个子树的
+`cgroup.procs`，其进程自动成为普通目标 / BG 目标（仍受 `exclude_names` 约束；路径必须在
+`/sys/fs/cgroup` 下）。与按名匹配可叠加使用，示例配置 `configs/cgroup-demo.conf`。
+
+```bash
+# 示例：把 redis 与 stress-ng 分别放进两个 cgroup，再用 cgroup 配置上线
+mkdir -p /sys/fs/cgroup/schedpilot-test/{redis,stress}
+( echo $BASHPID > /sys/fs/cgroup/schedpilot-test/redis/cgroup.procs; exec redis-server --port 6399 --save "" --appendonly no ) &
+( echo $BASHPID > /sys/fs/cgroup/schedpilot-test/stress/cgroup.procs; exec stress-ng --cpu 4 --timeout 60s ) &
+scripts/schedpilotctl.sh start --mode adaptive --config configs/cgroup-demo.conf
+
+# 回归测试（dry-run，无需加载 BPF 调度器即可验证发现与标注；自动探测/
+# 按需挂载 cgroup2，兼容 legacy v1 布局）
+tests/test_cgroup_targeting.sh
+```
+
 ## 4. 停止与回滚
 
 ```bash

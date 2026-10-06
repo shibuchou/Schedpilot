@@ -137,6 +137,8 @@ struct DaemonSettings {
 	std::vector<std::string> targets;
 	std::vector<std::string> excludes;
 	std::vector<std::string> bg;
+	std::vector<std::string> target_cgroups;
+	std::vector<std::string> bg_cgroups;
 	double alpha = 0.3;
 	double wake_hi = 500.0;
 	double run_lo_ns = 2000000.0;
@@ -161,6 +163,8 @@ struct DaemonSettings {
 		s.targets = cfg.get_list("targets.process_names");
 		s.excludes = cfg.get_list("targets.exclude_names");
 		s.bg = cfg.get_list("bg.process_names");
+		s.target_cgroups = cfg.get_list("targets.cgroup_paths");
+		s.bg_cgroups = cfg.get_list("bg.cgroup_paths");
 		s.alpha = cfg.get_double("classifier.alpha", s.alpha);
 		s.wake_hi = cfg.get_double("classifier.wake_hi", s.wake_hi);
 		s.run_lo_ns = cfg.get_double("classifier.run_lo_ns", s.run_lo_ns);

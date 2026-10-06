@@ -397,8 +397,8 @@ MySQL D `+85.2%`（10/10）、p99 `−74.8%`；Nginx basic `+50.1%`（20/20）�
 
 1. 消融效应在修复后 ≤2.2pp 且 95% CI 互相重叠——BG 收容/LLC/PMU 分类对 Redis 旗舰指标的增量属趋势性，
    主收益来自 sched_ext 基础 + 三分类路由（B/C 步骤）。
-2. Nginx 分类模式：旧 P1 尾延迟问题已消除（nginx-5，n=10 探索性复检：C +127.4%、p99 −64.9%，均 10/10）；
-   `scripts/deploy_nginx.sh` 默认已切到 adaptive（`--mode basic` 回退）；n=20 大样本确认列为可选后续。
+2. Nginx 分类模式：旧 P1 尾延迟问题已消除（nginx-5 n=10 复检 + **nginx-6 n=20 正式确认：C 配对 +143.1%、p99 −66.3%，均 20/20**）；
+   `scripts/deploy_nginx.sh` 默认已切到 adaptive（`--mode basic` 回退）。
 3. 冻结前历史矩阵（formal-2/mysql-2/nginx-2/noif-1/ext-1）保留为方法学对照，结论方向与冻结复跑一致。
 
 ### 6.11 资源与开销指标（perf stat 汇总，Redis formal-4）
@@ -459,8 +459,9 @@ MySQL D `+85.2%`（10/10）、p99 `−74.8%`；Nginx basic `+50.1%`（20/20）�
   日志 `evidence/sp4-vm/fault-injection-frozen.log`。
 - **soak（冻结构建，15 分钟）**：49 周期、errors=0、watchdog_hits=0、final state=enabled、**SOAK PASS**；
   日志 `evidence/sp4-vm/soak-frozen.log`。
-- **nginx-5（分类模式复检，2026-10-05，A/B/C/D × 10×60s，0 无效）**：A 18997 QPS / p99 10.98ms；
-  B +37.7% / −35.8%；**C +127.4%（配对 +124.75% [102.57, 146.94]，10/10 轮更高）/ p99 −64.9%（配对 −62.54% [−68.44, −56.64]，10/10 轮更低）**；
-  D +91.4% / −54.0%。结论：**分类模式（C）在 Nginx 上同时优于 basic 与 fair**——旧 P1 尾延迟问题（nginx-2 时代与迁移的交互）
-  已随迁移惩罚上限、退化 LLC 关路由、BG 短切片等修复消除。`scripts/deploy_nginx.sh` 默认模式改为 adaptive
-  （`--mode basic` 可回退；分类复检样本 n=10，属探索性结论，n=20 大样本确认列为可选后续）。
+- **nginx-5/6（分类模式复检与正式确认）**：nginx-5（A/B/C/D × 10×60s，0 无效）C +127.4% / p99 −64.9% 后，
+  **nginx-6 正式确认（A/B/C/D × 20×60s，0 无效，2026-10-06）：A 19340 QPS / p99 11.07ms；
+  B 中位 +37.3%（配对 +45.20% [30.91, 59.50]，19/20 轮更高）；C 中位 +130.4%（配对 +143.11% [118.66, 167.56]，20/20）/ p99 −67.3%（配对 −66.25%，20/20 轮更低）；D 中位 +88.4%（配对 +99.40% [78.20, 120.61]，20/20）/ p99 −54.9%**。
+  结论：**分类模式（C）在 Nginx 上同时优于 basic 与 fair**（自适应 D 的 lat_slice 回退行为在该负载下略逊于 C）；
+  旧 P1 尾延迟问题（nginx-2 时代与迁移的交互）已随迁移惩罚上限、退化 LLC 关路由、BG 短切片等修复消除。
+  `scripts/deploy_nginx.sh` 默认 adaptive（`--mode basic` 可回退）；归档 `nginx-6-raw.tar.gz`（sha256 `ba1244b1…`）。

@@ -1,0 +1,13 @@
+[cgroup-test] cgroup v2 root: /tmp/cgt-cgroup2.6305
+[cgroup-test] creating cgroups under /tmp/cgt-cgroup2.6305/schedpilot-test
+[cgroup-test] starting redis-server (port 6401) inside /tmp/cgt-cgroup2.6305/schedpilot-test/redis
+[cgroup-test] starting stress-ng inside /tmp/cgt-cgroup2.6305/schedpilot-test/stress
+[cgroup-test] starting SchedPilot (adaptive) with cgroup-based config
+[cgroup-test] PASS  sched_ext state=enabled
+[cgroup-test] asserting discovery and classification
+[cgroup-test] PASS  redis-server discovered through cgroup subtree
+[cgroup-test] PASS  stress-ng workers discovered and classified BG
+[cgroup-test] PASS  redis-server received a classified sample (not NORMAL)
+[cgroup-test] PASS  BPF class_map received entries (4)
+[cgroup-test] summary pass=5 fail=0
+[cgroup-test] CGROUP TARGETING PASS
