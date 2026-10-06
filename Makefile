@@ -24,6 +24,10 @@ DAEMON_SRCS := $(ROOT)/daemon/schedpilotd.cpp \
 	       $(ROOT)/daemon/pmu_sampler.cpp \
 	       $(ROOT)/daemon/classifier.cpp \
 	       $(ROOT)/daemon/bpf_iface.cpp
+# Any header that defines the userspace<->BPF ABI or daemon internals must be
+# listed, otherwise an intf.h layout change silently leaves a stale daemon
+# binary (observed once: intf v1->v2 left schedpilotd on the old layout).
+DAEMON_HDRS := $(wildcard $(ROOT)/daemon/*.hpp) $(ROOT)/bpf/intf.h
 
 .PHONY: all bpf loader daemon vmlinux clean check
 
@@ -59,7 +63,7 @@ $(BUILD_DIR)/scx_schedpilot: $(ROOT)/loader/scx_schedpilot.c \
 	@echo "built $@"
 
 daemon: $(BUILD_DIR)/schedpilotd
-$(BUILD_DIR)/schedpilotd: $(DAEMON_SRCS) | $(BUILD_DIR)
+$(BUILD_DIR)/schedpilotd: $(DAEMON_SRCS) $(DAEMON_HDRS) | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $(DAEMON_SRCS) -o $@ -lbpf -lelf -lz
 	@echo "built $@"
 
@@ -75,7 +79,7 @@ test: $(BUILD_DIR)/classifier_test
 	$(BUILD_DIR)/classifier_test
 
 $(BUILD_DIR)/classifier_test: $(ROOT)/tests/classifier_test.cpp \
-		$(ROOT)/daemon/classifier.cpp | $(BUILD_DIR)
+		$(ROOT)/daemon/classifier.cpp $(ROOT)/daemon/classifier.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -I$(ROOT)/daemon $^ -o $@
 
 clean:

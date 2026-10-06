@@ -397,8 +397,8 @@ MySQL D `+85.2%`（10/10）、p99 `−74.8%`；Nginx basic `+50.1%`（20/20）�
 
 1. 消融效应在修复后 ≤2.2pp 且 95% CI 互相重叠——BG 收容/LLC/PMU 分类对 Redis 旗舰指标的增量属趋势性，
    主收益来自 sched_ext 基础 + 三分类路由（B/C 步骤）。
-2. Nginx 分类模式：旧 P1 尾延迟问题已消除（nginx-5 n=10 复检 + **nginx-6 n=20 正式确认：C 配对 +143.1%、p99 −66.3%，均 20/20**）；
-   `scripts/deploy_nginx.sh` 默认已切到 adaptive（`--mode basic` 回退）。
+2. Nginx 分类模式：旧 P1 尾延迟问题已消除，且自适应与静态分类持平（**nginx-7 n=20 修正复跑：C +167.8%、D +169.8%，p99 均 −69.6%，全部 20/20**；
+   `scripts/deploy_nginx.sh` 默认 adaptive，`--mode basic` 回退）。
 3. 冻结前历史矩阵（formal-2/mysql-2/nginx-2/noif-1/ext-1）保留为方法学对照，结论方向与冻结复跑一致。
 
 ### 6.11 资源与开销指标（perf stat 汇总，Redis formal-4）
@@ -423,6 +423,14 @@ MySQL D `+85.2%`（10/10）、p99 `−74.8%`；Nginx basic `+50.1%`（20/20）�
 - **开销口径**：上表是 redis-server 进程自身计数；调度器自身开销（daemon CPU、BPF 运行时间）未单独折算，
   由"决策周期 100ms、故障/长稳 0 失速、正式矩阵 0 watchdog"作定性保证；精确 overhead 折算列为 P1。
 
+**调度器开销折算（2026-10-06，`bench/measure_overhead.sh --duration 20`，pinned Redis 0-3 + 干扰场景）**：
+
+- 窗口 20s、**1,076,000 请求（45.7k QPS）**：**schedpilotd CPU 253 ms ≈ 1.27% 单核 ≈ 235 ns/请求**；
+  调度派发 87,730 次（~4,386/s）≈ **0.082 次/请求**。
+- 内核侧 BPF 回调运行时间：本 6.6 backport 内核不为 struct_ops 程序暴露 `run_time_ns`（bpftool 无该计数），
+  故不单独折算；以派发频次 + 0 watchdog + 1Hz 策略周期作上界定性保证（如实标注）。
+- 两次独立复测（修正前后场景一致）：daemon 0.9~1.3% 单核、~235 ns/请求；派发 0.08 次/请求量级稳定。
+
 ### 6.12 SP3 内核兼容验证（2026-10-05，RD350x KVM）
 
 - **环境**：openEuler 24.03 LTS-SP3 虚拟机（自建 kickstart 安装，8 vCPU / 16 GiB / 桥接）。
@@ -443,6 +451,33 @@ MySQL D `+85.2%`（10/10）、p99 `−74.8%`；Nginx basic `+50.1%`（20/20）�
   `sp3-evidence.tar.gz`（1.2 MB）sha256 `e46976c23e1cb3030efd0895c853a2c1accb706d040bcfab371e567e3c128a5c`。
 - **结论**：**SP3 兼容验证通过**（构建 / 加载 / 运行 / 性能方向）；SP1 未验证，列为可选后续。
 
+### 6.13 构建加固与 P1 特性（2026-10-06）
+
+**构建/ABI 加固（真实缺陷，来自 nginx-6 复盘）**：
+
+| # | 问题 | 修复 | 验证 |
+|---|---|---|---|
+| 1 | `Makefile` daemon 目标未依赖 `bpf/intf.h`：intf v1→v2 后 `schedpilotd` 静默保持旧布局；旧 daemon 读新 cfg 时 `lat/bg_vtime_pct` 被打包成 `migrate_penalty_ns`（cfg 显示 `858993459300=(200<<32)+100`） | 头文件依赖（`daemon/*.hpp` + `bpf/intf.h`） | 强制重建后 `--dump-cfg` 数值全部正常（mig=2ms、bgv=200） |
+| 2 | 版本不一致无 fail-fast（静默污染） | daemon 启动读取 cfg 后校验 `intf_version`，不匹配即退出（rc=2） | 代码路径审查 + 正常运行不受影响 |
+| 3 | 干扰静默失败：`interference.sh` 启动不校验子进程；run_* 忽略失败；abcd 忽略 run 退出码 | 三层加固：启动自检、run_* 断言存活、abcd 将 run 非零退出标 INVALID | smoke 复跑：A 17.6k → D 52.8k（+201.0%，p99 −36.1%）正确 |
+| 4 | 端口已被占用时盲启 redis 失败 → 旧（未钉）实例被复用 | abcd 检测端口占用则**接管并重钉** redis（含全部线程）到 server cpus | 复现场景修复后 smoke 数值恢复正常 |
+
+> 受影响数据：smoke-cleanup、nginx-5、nginx-6 的 D 臂（污染，作废）；A/B/C 臂不受影响。
+> 另有两次早期验证性运行（首版 smoke-fixed、首次 overhead）因"未钉 redis"场景错误被重跑替代。
+
+**P1 特性（全部 opt-in，不影响既有矩阵默认行为）**：
+
+| 特性 | 配置 | 实现 | 验证 |
+|---|---|---|---|
+| **CUSUM 相位检测** | `classifier.cusum = true`（默认关） | 对唤醒率水平做双侧 CUSUM；报警时新电平一次性绕过滞回（`[phase-shift]` 标记入 JSONL/`phase` 字段） | 单测：相位跳变 **≤2 周期**完成重分类 vs 无 CUSUM **≥3 周期**（`tests/classifier_test.cpp`，全部通过） |
+| **NUMA locality 报告** | `classifier.numa = true`（默认开，report-only） | 读 `/proc/<tgid>/numa_maps` + `/proc/<tgid>/stat` 当前 CPU → 节点，输出 `numa_local_pct` / `numa_nodes` 到 JSONL；不参与任何决策（符合 MVP 口径表述） | 集成测试断言 JSONL 字段存在（单节点 VM → 100%） |
+| **动态 BG CPU pool** | `bg.cpu_pool = "2-3"`（默认空=关） | daemon 对 BG 目标任务**全部线程** `sched_setaffinity` 到池；当非 BG 目标存在时启用，目标消失即恢复保存的原始亲和 | `tests/test_bg_cpu_pool.sh` **5/5 PASS**（SP4 与 SP3）：confine 2,3 → 目标消失后恢复 0-15，日志含 confine/release 记录 |
+
+**开销折算结果**：见 §6.11 增补（schedpilotd ≈235 ns/请求、0.082 派发/请求；BPF struct_ops runtime 在本内核不暴露，如实标注）。
+
+**证据**：`evidence/sp4-vm/p1-evidence/`（overhead.log / bg-cpu-pool.log / cgroup-targeting.log / make-test.log）、
+`evidence/sp4-vm/smoke-fixed/`、`evidence/sp3-vm/cgroup-targeting.log`；归档 `p1-evidence.tar.gz`（sha256 `bd6b24a1…`）。
+
 **补充冻结复跑（noif-2 / ext-2 / 故障注入 / soak，commit `be962b8`）**：
 
 - **noif-2（Redis 无干扰，A/B/C/D × 10 × 60s，0 无效）**：A 84783 QPS、p99 0.751ms。
@@ -459,9 +494,14 @@ MySQL D `+85.2%`（10/10）、p99 `−74.8%`；Nginx basic `+50.1%`（20/20）�
   日志 `evidence/sp4-vm/fault-injection-frozen.log`。
 - **soak（冻结构建，15 分钟）**：49 周期、errors=0、watchdog_hits=0、final state=enabled、**SOAK PASS**；
   日志 `evidence/sp4-vm/soak-frozen.log`。
-- **nginx-5/6（分类模式复检与正式确认）**：nginx-5（A/B/C/D × 10×60s，0 无效）C +127.4% / p99 −64.9% 后，
-  **nginx-6 正式确认（A/B/C/D × 20×60s，0 无效，2026-10-06）：A 19340 QPS / p99 11.07ms；
-  B 中位 +37.3%（配对 +45.20% [30.91, 59.50]，19/20 轮更高）；C 中位 +130.4%（配对 +143.11% [118.66, 167.56]，20/20）/ p99 −67.3%（配对 −66.25%，20/20 轮更低）；D 中位 +88.4%（配对 +99.40% [78.20, 120.61]，20/20）/ p99 −54.9%**。
-  结论：**分类模式（C）在 Nginx 上同时优于 basic 与 fair**（自适应 D 的 lat_slice 回退行为在该负载下略逊于 C）；
-  旧 P1 尾延迟问题（nginx-2 时代与迁移的交互）已随迁移惩罚上限、退化 LLC 关路由、BG 短切片等修复消除。
-  `scripts/deploy_nginx.sh` 默认 adaptive（`--mode basic` 可回退）；归档 `nginx-6-raw.tar.gz`（sha256 `ba1244b1…`）。
+- **nginx-5/6/7（分类模式复检、确认与修正复跑）**：nginx-5（10×60s）C +127.4% / p99 −64.9%；nginx-6（20×60s）
+  确认 C 中位 +130.4%（配对 +143.11% [118.66, 167.56]，20/20 更高）/ p99 −66.25%（20/20 更低）。
+  但复盘发现 **nginx-6 的 D 臂（自适应）受构建依赖缺陷污染**：`Makefile` 的 daemon 目标未依赖 `bpf/intf.h`，
+  intf v1→v2 后 `schedpilotd` 未重编译，旧布局 daemon 把 `lat/bg_vtime_pct` 打包值误当 `migrate_penalty_ns`
+  （cfg 显示 `858993459300`），且"低 MPKI 自动收缩 cache_slice 到 2ms"的策略在 Nginx 上有害。
+  **修复（见 §6.13）**：Makefile 头文件依赖 + daemon `intf_version` fail-fast + 取消 `cache_slice` 自动收缩。
+  **nginx-7（修正后 20×60s，0 无效）**：A 18678 QPS / p99 11.06ms；B 中位 +42.9%（配对 +61.14% [44.61, 77.67]，20/20）；
+  **C 中位 +137.1%（配对 +167.81% [141.06, 194.56]，20/20）**；**D 中位 +138.1%（配对 +169.82% [142.58, 197.06]，20/20）/
+  p99 −69.63%（20/20 轮更低）；D vs C：+0.4% / −0.8%（打平）**。
+  结论：**分类/自适应模式在 Nginx 上同时优于 basic 与 fair，且自适应 D 与静态 C 持平**；nginx-5/6 D 臂数据作废，
+  以 nginx-7 为准；归档 `nginx-7-raw.tar.gz`（sha256 `73d8cc10…`）。

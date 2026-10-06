@@ -19,7 +19,9 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 | **mysql-3** | MySQL 4 臂 × 10 × 60s | `evidence/sp4-vm/mysql-3/` | **D TPS +85.2% [+62.0, +108.3]，10/10**；p99 −74.8% [−82.4, −67.3] |
 | **nginx-4** | Nginx A,B × 20 × 60s | `evidence/sp4-vm/nginx-4/` | **B QPS +50.1% [+35.1, +65.2]，20/20**；p99 −34.1% [−43.5, −24.6]，17/20 轮更低（basic） |
 | **nginx-5** | Nginx 分类模式复检 A,B,C,D × 10 × 60s | `evidence/sp4-vm/nginx-5/` | C +124.8% [+102.6, +146.9]，10/10；p99 −62.5% [−68.4, −56.6]，10/10（P1 尾延迟问题消除） |
-| **nginx-6** | Nginx 分类模式正式确认 A,B,C,D × 20 × 60s | `evidence/sp4-vm/nginx-6/` | **C +143.1% [+118.7, +167.6]，20/20；p99 −66.3% [−70.5, −62.0]，20/20**（`deploy_nginx.sh` 默认 adaptive） |
+| **nginx-6** | Nginx 分类模式确认 A,B,C,D × 20 × 60s | `evidence/sp4-vm/nginx-6/` | C +143.1% [+118.7, +167.6]，20/20；p99 −66.3%（**D 臂因构建依赖缺陷污染，作废**，见 §6.13） |
+| **nginx-7** | Nginx 修正后正式矩阵 A,B,C,D × 20 × 60s | `evidence/sp4-vm/nginx-7/` | **C +167.8% / D +169.8% [+142.6, +197.1]（20/20）；p99 均 −69.6%（20/20）**；D vs C 打平（推荐 adaptive） |
+| P1 证据 | overhead / BG pool / cgroup 测试 | `evidence/sp4-vm/p1-evidence/` + `evidence/sp4-vm/smoke-fixed/` | 开销 ≈235 ns/请求；BG pool 5/5；cgroup 5/5；smoke +201.0% |
 | **noif-2** | Redis 无干扰 4 臂 × 10 × 60s | `evidence/sp4-vm/noif-2/` | C/D 吞吐 −3.2%~−3.3%（10/10 轮为负）、p99 −11%~−12%；B −5.7% / p99 −17.6% |
 | **ext-2** | Redis 外部对照 5 臂 × 10 × 60s | `evidence/sp4-vm/ext-2/` | D +169.6% [+158.2, +181.1]；X-simple −51.3% / p99 +351.9%；X-flatcg **10/10 被 watchdog 卸载，无有效轮次** |
 
@@ -42,6 +44,8 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 | fault-soak-frozen-raw.tar.gz | 8449 | `55e9c4fb26aca804da3e4fc5877a65cdfdb1bbb04297200548389b605a4c96f9` |
 | nginx-5-raw.tar.gz（分类模式复检） | 2080970 | `fcc394d0b5ddd93a33145246fed4dddb137e4d7ae998d53325b596045e142597` |
 | nginx-6-raw.tar.gz（分类模式正式确认 n=20） | 4141887 | `ba1244b1f83f2935adefe83be8e01bf194c722cc4fe031ecc79c39f9e076f0e7` |
+| nginx-7-raw.tar.gz（修正后正式矩阵 n=20） | 4099697 | `73d8cc10f335cfc49de86916b37223d4767c4da2cdc7c1365e9afbe2f5bca4f1` |
+| p1-evidence.tar.gz（overhead/BG pool/smoke） | 160022 | `bd6b24a19d022ed513449f8a5f1cb49c3ee34e96c82cd9d99c169ebbbff5cd4e` |
 | smoke-cleanup-raw.tar.gz（死代码清理等价性 smoke） | 160111 | `9076f70d4c7335e351f15dc5ab256c3d5d424e6f2f81dbabb9b52580611db288` |
 | sp3-evidence.tar.gz（SP3 兼容验证） | 1229434 | `e46976c23e1cb3030efd0895c853a2c1accb706d040bcfab371e567e3c128a5c` |
 

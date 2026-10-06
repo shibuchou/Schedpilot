@@ -18,6 +18,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
+#include <sched.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,6 +68,13 @@ struct Target {
 	bool bg = false;
 	SampleTracker last;
 	Features last_features;
+	// NUMA locality reporting (P1, report-only)
+	double numa_local_pct = -1.0;
+	int numa_nodes = 0;
+	// BG CPU pool confinement (P1)
+	bool aff_saved = false;
+	bool aff_confined = false;
+	cpu_set_t orig_aff;
 };
 
 static bool match_proc_name(const std::string &name,
@@ -108,6 +116,156 @@ static std::string read_comm(uint32_t tgid)
 		return "";
 	std::getline(in, s);
 	return trim(s);
+}
+
+// Parse a cpulist such as "4-7,9" into a cpu_set_t.
+static bool parse_cpulist(const std::string &spec, cpu_set_t *set)
+{
+	CPU_ZERO(set);
+	if (spec.empty())
+		return false;
+	std::stringstream ss(spec);
+	std::string part;
+	while (std::getline(ss, part, ',')) {
+		part = trim(part);
+		if (part.empty())
+			continue;
+		size_t dash = part.find('-');
+		try {
+			if (dash == std::string::npos) {
+				int cpu = std::stoi(part);
+				if (cpu >= 0 && cpu < CPU_SETSIZE)
+					CPU_SET(cpu, set);
+			} else {
+				int a = std::stoi(part.substr(0, dash));
+				int b = std::stoi(part.substr(dash + 1));
+				if (a > b)
+					std::swap(a, b);
+				for (int c = std::max(0, a);
+				     c <= b && c < CPU_SETSIZE; c++)
+					CPU_SET(c, set);
+			}
+		} catch (...) {
+			return false;
+		}
+	}
+	return CPU_COUNT(set) > 0;
+}
+
+// Set affinity of a task group: its leader only, or every thread.
+static void set_tg_affinity(uint32_t tgid, const cpu_set_t *set, bool all_tids)
+{
+	if (!all_tids) {
+		sched_setaffinity((pid_t)tgid, sizeof(cpu_set_t), set);
+		return;
+	}
+	std::string dirpath = "/proc/" + std::to_string(tgid) + "/task";
+	DIR *d = opendir(dirpath.c_str());
+	if (!d) {
+		sched_setaffinity((pid_t)tgid, sizeof(cpu_set_t), set);
+		return;
+	}
+	struct dirent *de;
+	while ((de = readdir(d)) != nullptr) {
+		if (de->d_name[0] < '0' || de->d_name[0] > '9')
+			continue;
+		pid_t tid = (pid_t)atoi(de->d_name);
+		sched_setaffinity(tid, sizeof(cpu_set_t), set);
+	}
+	closedir(d);
+}
+
+// CPU -> NUMA node map from sysfs (single-node systems yield all zeros).
+static std::map<uint32_t, uint32_t> build_cpu_node_map()
+{
+	std::map<uint32_t, uint32_t> m;
+	for (int n = 0; n < 64; n++) {
+		char path[128];
+		snprintf(path, sizeof(path),
+			 "/sys/devices/system/node/node%d/cpulist", n);
+		std::ifstream in(path);
+		if (!in)
+			break;
+		std::string line;
+		std::getline(in, line);
+		cpu_set_t set;
+		if (!parse_cpulist(trim(line), &set))
+			continue;
+		for (int c = 0; c < CPU_SETSIZE; c++)
+			if (CPU_ISSET(c, &set))
+				m[(uint32_t)c] = (uint32_t)n;
+	}
+	return m;
+}
+
+// Current CPU of a task, from /proc/<tgid>/stat field 39.
+static int read_task_cpu(uint32_t tgid)
+{
+	std::ifstream in("/proc/" + std::to_string(tgid) + "/stat");
+	std::string line;
+	if (!in || !std::getline(in, line))
+		return -1;
+	size_t rp = line.rfind(')');
+	if (rp == std::string::npos)
+		return -1;
+	std::stringstream ss(line.substr(rp + 1));
+	std::string tok;
+	int idx = 3; // first token after ')' is field 3 (state)
+	while (ss >> tok) {
+		if (idx == 39) {
+			try {
+				return std::stoi(tok);
+			} catch (...) {
+				return -1;
+			}
+		}
+		idx++;
+	}
+	return -1;
+}
+
+// NUMA locality inference (report-only, per MVP scope wording): share of the
+// task's mapped pages living on the task's current NUMA node.
+static double read_numa_local_pct(uint32_t tgid, int cur_cpu,
+				  const std::map<uint32_t, uint32_t> &cpu_node,
+				  int *nodes_out)
+{
+	*nodes_out = 0;
+	std::ifstream in("/proc/" + std::to_string(tgid) + "/numa_maps");
+	if (!in)
+		return -1.0;
+	uint32_t node = 0;
+	auto it = cpu_node.find((uint32_t)cur_cpu);
+	if (it != cpu_node.end())
+		node = it->second;
+	std::string line;
+	double total = 0, local = 0;
+	std::set<uint32_t> nodes;
+	while (std::getline(in, line)) {
+		std::stringstream ss(line);
+		std::string tok;
+		while (ss >> tok) {
+			if (tok.size() < 3 || tok[0] != 'N')
+				continue;
+			size_t eq = tok.find('=');
+			if (eq == std::string::npos)
+				continue;
+			try {
+				uint32_t n = (uint32_t)std::stoul(
+					tok.substr(1, eq - 1));
+				double pages = std::stod(tok.substr(eq + 1));
+				nodes.insert(n);
+				total += pages;
+				if (n == node)
+					local += pages;
+			} catch (...) {
+			}
+		}
+	}
+	*nodes_out = (int)nodes.size();
+	if (total <= 0)
+		return -1.0;
+	return 100.0 * local / total;
 }
 
 struct ProcEntry {
@@ -401,7 +559,10 @@ static void policy_adjust(BpfIface &iface, sp_cfg *cfg, JsonlLog *log,
 							  oldv * 115 / 100);
 		}
 		break;
-	case 1: // CACHE slice follows LLC MPKI; decays to default when idle
+	case 1: // CACHE slice grows with LLC MPKI; decays to default when idle
+		// Note: no shrink on "low MPKI" - long slices are good for
+		// throughput tasks and shrinking to 2ms hurt Nginx (D<C
+		// regression analysis, see test report 6.10/6.11).
 		target = &cfg->cache_slice_ns;
 		oldv = cfg->cache_slice_ns;
 		newv = oldv;
@@ -410,10 +571,6 @@ static void policy_adjust(BpfIface &iface, sp_cfg *cfg, JsonlLog *log,
 			    oldv < 10000000ULL)
 				newv = std::min<uint64_t>(10000000ULL,
 							  oldv * 125 / 100);
-			else if (cache_agg.mpki < s.mpki_hi / 2.0 &&
-				 oldv > 2000000ULL)
-				newv = std::max<uint64_t>(2000000ULL,
-							  oldv * 90 / 100);
 		} else if (oldv > 8000000ULL) {
 			newv = std::max<uint64_t>(8000000ULL,
 						  oldv * 90 / 100);
@@ -575,6 +732,13 @@ int main(int argc, char **argv)
 		log(LogLevel::Error, "cannot read cfg map");
 		return 1;
 	}
+	if (cfg.intf_version != SP_INTF_VERSION) {
+		log(LogLevel::Error,
+		    "cfg interface mismatch: map v%u, daemon expects v%u "
+		    "(stale binary? rebuild loader and daemon together)",
+		    cfg.intf_version, (unsigned)SP_INTF_VERSION);
+		return 2;
+	}
 
 	if (!set_mode.empty()) {
 		if (set_mode == "basic")
@@ -720,7 +884,8 @@ int main(int argc, char **argv)
 		settings.alpha, settings.wake_hi, settings.run_lo_ns,
 		settings.delay_lo_ns, settings.ipc_hi, settings.mpki_hi,
 		settings.hysteresis_cycles, settings.classify_pmu,
-		settings.lat_moderate });
+		settings.lat_moderate, settings.cusum, settings.cusum_h,
+		settings.cusum_slack });
 
 	std::map<uint32_t, Target> targets;
 	uint64_t start_ns = now_mono_ns();
@@ -752,6 +917,11 @@ int main(int argc, char **argv)
 				live.insert(kv.first);
 			for (auto it = targets.begin(); it != targets.end();) {
 				if (!live.count(it->first)) {
+					if (it->second.aff_confined &&
+					    it->second.aff_saved)
+						set_tg_affinity(it->first,
+								&it->second.orig_aff,
+								true);
 					classifier.forget(it->first);
 					pmu.drop_tgid(it->first);
 					if (!dry_run) {
@@ -776,6 +946,72 @@ int main(int argc, char **argv)
 					    t.bg ? " (BG, external)" : "");
 					if (!dry_run && pmu_ok)
 						pmu.ensure_tgid(t.tgid, nullptr);
+				}
+			}
+
+			// NUMA locality reporting (P1, report-only).
+			if (settings.numa_report) {
+				static const std::map<uint32_t, uint32_t>
+					cpu_node = build_cpu_node_map();
+				for (auto &kv2 : targets) {
+					int cur_cpu = read_task_cpu(kv2.first);
+					if (cur_cpu >= 0)
+						kv2.second.numa_local_pct =
+							read_numa_local_pct(
+								kv2.first, cur_cpu,
+								cpu_node,
+								&kv2.second
+									 .numa_nodes);
+				}
+			}
+
+			// Dynamic BG CPU pool (P1, opt-in): confine BG tasks to
+			// the configured CPU range while latency-relevant
+			// (non-BG) targets exist; release and restore the saved
+			// affinity when they disappear.
+			if (!settings.bg_cpu_pool.empty()) {
+				cpu_set_t pool_set;
+				bool have_pool =
+					parse_cpulist(settings.bg_cpu_pool,
+						      &pool_set);
+				bool pool_active = false;
+				if (have_pool) {
+					for (auto &kv2 : targets)
+						if (!kv2.second.bg) {
+							pool_active = true;
+							break;
+						}
+				}
+				for (auto &kv2 : targets) {
+					Target &t = kv2.second;
+					if (!t.bg)
+						continue;
+					if (pool_active && !t.aff_confined) {
+						if (!t.aff_saved &&
+						    sched_getaffinity(
+							    (pid_t)t.tgid,
+							    sizeof(cpu_set_t),
+							    &t.orig_aff) == 0)
+							t.aff_saved = true;
+						set_tg_affinity(t.tgid,
+								&pool_set, true);
+						t.aff_confined = true;
+						log(LogLevel::Info,
+						    "bg cpu pool: confined %s tgid=%u to %s",
+						    t.comm.c_str(), t.tgid,
+						    settings.bg_cpu_pool.c_str());
+					} else if (!pool_active &&
+						   t.aff_confined) {
+						if (t.aff_saved)
+							set_tg_affinity(
+								t.tgid,
+								&t.orig_aff,
+								true);
+						t.aff_confined = false;
+						log(LogLevel::Info,
+						    "bg cpu pool: released %s tgid=%u",
+						    t.comm.c_str(), t.tgid);
+					}
 				}
 			}
 		}
@@ -877,7 +1113,11 @@ int main(int argc, char **argv)
 					",\"tgid\":" + std::to_string(t.tgid) +
 					",\"comm\":\"" + json_escape(t.comm) +
 					"\",\"class\":\"BG\",\"confidence\":1.0,"
-					"\"source\":\"external\",\"bg\":true}");
+					"\"source\":\"external\",\"bg\":true,"
+					"\"numa_local_pct\":" +
+					std::to_string(t.numa_local_pct) +
+					",\"numa_nodes\":" +
+					std::to_string(t.numa_nodes) + "}");
 				continue;
 			}
 
@@ -901,21 +1141,24 @@ int main(int argc, char **argv)
 				buf, sizeof(buf),
 				"{\"type\":\"sample\",\"ts_real_ns\":%llu,"
 				"\"tgid\":%u,\"comm\":\"%s\",\"class\":\"%s\","
-				"\"confidence\":%.3f,\"changed\":%s,"
+				"\"confidence\":%.3f,\"changed\":%s,\"phase\":%s,"
 				"\"features\":{\"sched_valid\":%s,"
 				"\"pmu_valid\":%s,\"pmu_multiplexed\":%s,"
 				"\"wake_rate\":%.2f,\"avg_run_ns\":%.0f,"
 				"\"avg_delay_ns\":%.0f,\"ipc\":%.4f,"
-				"\"mpki\":%.4f},\"reason\":\"%s\"}",
+				"\"mpki\":%.4f},\"numa_local_pct\":%.1f,"
+				"\"numa_nodes\":%d,\"reason\":\"%s\"}",
 				(unsigned long long)now_real_ns(), t.tgid,
 				json_escape(t.comm).c_str(),
 				class_name(d.klass), d.confidence,
 				d.changed ? "true" : "false",
+				d.phase ? "true" : "false",
 				f.sched_valid ? "true" : "false",
 				f.pmu_valid ? "true" : "false",
 				f.pmu_multiplexed ? "true" : "false",
 				f.wake_rate, f.avg_run_ns, f.avg_delay_ns,
-				f.ipc, f.mpki, json_escape(d.reason).c_str());
+				f.ipc, f.mpki, t.numa_local_pct, t.numa_nodes,
+				json_escape(d.reason).c_str());
 			log_file.line(buf);
 
 			if (d.klass == SP_CLASS_LAT && f.sched_valid) {

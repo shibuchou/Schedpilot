@@ -155,6 +155,45 @@ int main()
 		CHECK(d.klass == SP_CLASS_NORMAL);
 	}
 
+	// 9) CUSUM phase shift accelerates reclassification (opt-in)
+	{
+		ClassifierSettings s3 = s;
+		s3.cusum = true;
+		Classifier c(s3);
+		Features calm = sched_features(50, 30000000, 100000);
+		for (int i = 0; i < 20; i++)
+			c.update(9, calm);
+		Features burst = sched_features(5000, 500000, 0);
+		int cycles_to_lat = -1;
+		for (int i = 1; i <= 6; i++) {
+			auto d = c.update(9, burst);
+			if (d.klass == SP_CLASS_LAT) {
+				cycles_to_lat = i;
+				CHECK(d.phase || i <= 2);
+				break;
+			}
+		}
+		CHECK(cycles_to_lat > 0 && cycles_to_lat <= 2);
+	}
+
+	// 10) without CUSUM the same shift needs full hysteresis (>= 3 cycles)
+	{
+		Classifier c(s); // cusum defaults to off
+		Features calm = sched_features(50, 30000000, 100000);
+		for (int i = 0; i < 20; i++)
+			c.update(10, calm);
+		Features burst = sched_features(5000, 500000, 0);
+		int cycles_to_lat = -1;
+		for (int i = 1; i <= 6; i++) {
+			auto d = c.update(10, burst);
+			if (d.klass == SP_CLASS_LAT) {
+				cycles_to_lat = i;
+				break;
+			}
+		}
+		CHECK(cycles_to_lat >= 3);
+	}
+
 	if (failures == 0) {
 		printf("classifier_test: all checks passed\n");
 		return 0;

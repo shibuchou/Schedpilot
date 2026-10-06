@@ -1,0 +1,16 @@
+[overhead] daemon=305216 redis=305173 duration=20s interference=1
+[overhead] warmup 5s
+[overhead] estimated rate=53792.36 rps total=1076000 requests
+# Scheduler overhead measurement
+
+- window: 20s; redis-benchmark: 1076000 requests, 45651 QPS
+- schedpilotd CPU: 253.1 ms (1.265% of one CPU)
+- BPF prog runtime: not exposed for struct_ops callbacks on this kernel (bpftool reports no run_time_ns); kernel-side scheduler cost is therefore reported only via the dispatch-call rate below
+- dispatch calls: 87730 (~4386/s)
+
+| per request | ns |
+|---|---|
+| daemon CPU | 235.2 |
+| dispatches | 0.082 |
+
+[overhead] results: /root/schedpilot/results/overhead-20261006-141045

@@ -16,6 +16,9 @@
 | 统计与归因 | `bench/analyze_results.py`（含固定 SLO goodput） |
 | 故障注入测试 | `tests/test_fault_injection.sh` |
 | 长稳测试（soak） | `tests/test_soak.sh` |
+| 容器/cgroup 目标回归测试 | `tests/test_cgroup_targeting.sh` |
+| 动态 BG CPU pool 回归测试 | `tests/test_bg_cpu_pool.sh` |
+| 调度器开销测量 | `bench/measure_overhead.sh` |
 | 单元测试 | `tests/classifier_test.cpp`（`make test`） |
 | 部署与回滚说明 | `docs/03_deploy_rollback.md` |
 | 测试方案 | `docs/02_test_plan.md` |

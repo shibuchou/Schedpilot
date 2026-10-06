@@ -24,6 +24,7 @@ struct ClassDecision {
 	uint32_t klass = SP_CLASS_NORMAL;
 	double confidence = 0; // 0..1
 	bool changed = false;
+	bool phase = false; // CUSUM phase-shift detected this cycle
 	std::string reason;
 };
 
@@ -37,6 +38,9 @@ struct ClassifierSettings {
 	int hysteresis_cycles = 5;
 	bool use_pmu = true;
 	bool lat_moderate = true; // moderate-wake + short-run -> L-SYNC
+	bool cusum = false;       // phase-shift detection (P1, opt-in)
+	double cusum_h = 5.0;     // normalized CUSUM alarm threshold
+	double cusum_slack = 0.5; // relative drift tolerated per sample
 };
 
 class Classifier {
@@ -53,6 +57,10 @@ private:
 		uint32_t current = SP_CLASS_NORMAL;
 		uint32_t candidate = SP_CLASS_NORMAL;
 		int streak = 0;
+		// CUSUM phase detector on the wake-rate level (opt-in)
+		double wake_base = 0;
+		bool base_primed = false;
+		double cusum_pos = 0, cusum_neg = 0;
 	};
 
 	ClassifierSettings s_;

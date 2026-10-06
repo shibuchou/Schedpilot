@@ -1,0 +1,28 @@
+{
+  "started": "2026-10-06T11:42:01+00:00",
+  "host": "schedpilot-sp4",
+  "scenario": "v3 (service + interference share SERVER_CPUS; client isolated)",
+  "kernel": "6.6.0-schedpilot",
+  "workload": "nginx",
+  "port": 8080,
+  "config": "/root/schedpilot/configs/nginx.conf",
+  "runs": 20,
+  "duration_s": 60,
+  "warmup_s": 10,
+  "arms": "A,B,C,D",
+  "fail_fast": 1,
+  "server_cpus": "0-3",
+  "client_cpus": "4-7",
+  "interference_cpus": "0-3",
+  "interference": true,
+  "interference_cpu_workers": 4,
+  "interference_vm_workers": 2,
+  "interference_vm_bytes": "1G",
+  "baseline_note": "Baseline is the openEuler default fair-class scheduler (competition text: default CFS); Linux 6.6 fair-class internals are not assumed identical to mainline classic CFS.",
+  "git_commit": "3fdaf805d75bdd66b977e0fb5d12fb6784a77625",
+  "binaries": {
+    "scx_schedpilot_sha256": "76f0cad31ee56018f08fbd5d1fc0065500d72b2c0c0ced286720978eb89a9ccb",
+    "schedpilotd_sha256": "292016ddff268899062ee01fc6480471e81b6e36d6796537ec7fcc027def1f39",
+    "bpf_object_sha256": "3af716ddc8fe524ff529a43ed27558919c3c36ca1af908f0ac2ad5d121ad3d9b"
+  }
+}

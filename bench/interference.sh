@@ -35,6 +35,11 @@ cmd_start() {
 		--timeout 0 --metrics-brief >/dev/null 2>&1 &
 	echo $! >"$PID_FILE"
 	sleep 1
+	if ! is_running; then
+		echo "[FAIL] interference exited immediately (stress-ng failed to start)" >&2
+		rm -f "$PID_FILE"
+		return 1
+	fi
 	echo "[schedpilot] interference started pid=$(cat "$PID_FILE") cpus=$CPUS cpu_workers=$CPU_WORKERS vm_workers=$VM_WORKERS"
 }
 

@@ -91,9 +91,27 @@ EXT_PID=""
 case "$WORKLOAD" in
 redis)
 	mkdir -p /tmp/schedpilot-redis
-	taskset -c "$SERVER_CPUS" redis-server "$ROOT/bench/redis-schedpilot.conf" \
-		--port "$PORT" >"$RESULTS/redis-server.log" 2>&1 &
-	SERVER_PID=$!
+	# If a redis-server already listens on $PORT (e.g. left over from a
+	# manual start), adopt it and re-pin all of its threads to SERVER_CPUS
+	# instead of starting a second instance that cannot bind and silently
+	# leaves the unpinned one in place. Otherwise start a fresh pinned one.
+	SERVER_OWNED=0
+	EXISTING_PID="$(ss -ltnpH "sport = :$PORT" 2>/dev/null |
+		grep -o 'pid=[0-9]*' | head -n1 | cut -d= -f2)"
+	if [ -z "$EXISTING_PID" ]; then
+		EXISTING_PID="$(pgrep -f "redis-server.*--port $PORT" | head -n1 || true)"
+	fi
+	if [ -n "$EXISTING_PID" ]; then
+		SERVER_PID="$EXISTING_PID"
+		for p in $(pgrep -x redis-server); do
+			taskset -apc "$SERVER_CPUS" "$p" >/dev/null 2>&1 || true
+		done
+	else
+		taskset -c "$SERVER_CPUS" redis-server "$ROOT/bench/redis-schedpilot.conf" \
+			--port "$PORT" >"$RESULTS/redis-server.log" 2>&1 &
+		SERVER_PID=$!
+		SERVER_OWNED=1
+	fi
 	for _ in $(seq 1 30); do
 		redis-cli -p "$PORT" ping >/dev/null 2>&1 && break
 		sleep 0.5
@@ -137,7 +155,7 @@ cleanup() {
 	"$ROOT/scripts/schedpilotctl.sh" stop >/dev/null 2>&1 || true
 	[ -n "${EXT_PID:-}" ] && kill "$EXT_PID" 2>/dev/null || true
 	case "$WORKLOAD" in
-	redis) [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true ;;
+	redis) [ "${SERVER_OWNED:-0}" = "1" ] && [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true ;;
 	nginx) nginx -s stop -c "$ROOT/bench/nginx-schedpilot.conf" >/dev/null 2>&1 || true ;;
 	mysql) mysqladmin --defaults-file="$MYSQL_CNF" shutdown >/dev/null 2>&1 || true ;;
 	esac
@@ -285,6 +303,7 @@ for run in $(seq 1 "$RUNS"); do
 
 		EXTRA=()
 		[ "$NO_INTERFERENCE" = "1" ] && EXTRA+=(--no-interference)
+		RUN_RC=0
 		"$ROOT/bench/run_${WORKLOAD}.sh" \
 			--arm "$arm" --run-id "$run" --out "$out" \
 			--server-cpus "$SERVER_CPUS" --client-cpus "$CLIENT_CPUS" \
@@ -293,14 +312,16 @@ for run in $(seq 1 "$RUNS"); do
 			--if-vm-workers "$IF_VM_WORKERS" \
 			--if-vm-bytes "$IF_VM_BYTES" \
 			--port "$PORT" --duration "$DURATION" --warmup "$WARMUP" \
-			"${EXTRA[@]}" >"$out/run.stdout" 2>&1
+			"${EXTRA[@]}" >"$out/run.stdout" 2>&1 || RUN_RC=$?
 
 		# Post-run contamination check: scheduler must still be the one we
 		# started (no watchdog abort / fallback to fair mid-measurement).
 		ST_AFTER="$(cat /sys/kernel/sched_ext/state 2>/dev/null || echo missing)"
 		SEQ_AFTER="$(cat /sys/kernel/sched_ext/enable_seq 2>/dev/null || echo -1)"
 		INVALID_REASON=""
-		if [ "$arm" != "A" ] && { [ "$ST_AFTER" != "enabled" ] || [ "$SEQ_AFTER" != "$SEQ_BEFORE" ]; }; then
+		if [ "$RUN_RC" != "0" ]; then
+			INVALID_REASON="run script failed rc=$RUN_RC (setup/interference gate)"
+		elif [ "$arm" != "A" ] && { [ "$ST_AFTER" != "enabled" ] || [ "$SEQ_AFTER" != "$SEQ_BEFORE" ]; }; then
 			INVALID_REASON="contaminated: state=$ST_AFTER enable_seq ${SEQ_BEFORE}->${SEQ_AFTER}"
 		fi
 

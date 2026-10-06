@@ -150,10 +150,15 @@ struct DaemonSettings {
 	bool policy_enabled = true;
 	bool classify_pmu = true;
 	bool lat_moderate = true;
+	bool cusum = false; // phase-shift detection (opt-in, P1)
+	double cusum_h = 5.0;
+	double cusum_slack = 0.5;
 	bool llc_affinity = true;
 	bool bg_contain = true;
 	bool preempt = true;
 	bool dry_run = false;
+	bool numa_report = true; // report NUMA locality per target (no decision impact)
+	std::string bg_cpu_pool; // e.g. "4-7"; empty = disabled (soft confinement)
 	int duration_s = 0;
 	std::string log_dir = "logs";
 
@@ -178,9 +183,15 @@ struct DaemonSettings {
 		s.policy_enabled = cfg.get_bool("policy.adaptive", s.policy_enabled);
 		s.classify_pmu = cfg.get_bool("policy.classify_pmu", s.classify_pmu);
 		s.lat_moderate = cfg.get_bool("classifier.lat_moderate", s.lat_moderate);
+		s.cusum = cfg.get_bool("classifier.cusum", s.cusum);
+		s.cusum_h = cfg.get_double("classifier.cusum_h", s.cusum_h);
+		s.cusum_slack =
+			cfg.get_double("classifier.cusum_slack", s.cusum_slack);
 		s.llc_affinity = cfg.get_bool("policy.llc_affinity", s.llc_affinity);
 		s.bg_contain = cfg.get_bool("policy.bg_contain", s.bg_contain);
 		s.preempt = cfg.get_bool("policy.preempt", s.preempt);
+		s.numa_report = cfg.get_bool("classifier.numa", s.numa_report);
+		s.bg_cpu_pool = cfg.get_str("bg.cpu_pool", s.bg_cpu_pool);
 		s.log_dir = cfg.get_str("log.dir", s.log_dir);
 		if (s.interval_ms < 10)
 			s.interval_ms = 10;

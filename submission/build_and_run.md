@@ -50,11 +50,11 @@ bench/abcd_experiment.sh --workload redis --runs 20 --duration 60 --warmup 10 \
   --arms A,B,C,D,d-no-pmu,d-no-llc,d-no-bg --results results/formal-4
 python3 bench/analyze_results.py --results results/formal-4 --baseline A
 
-# Nginx：推荐部署入口 + 回归测试（basic 模式为实测最优）
-scripts/deploy_nginx.sh
+# Nginx：推荐部署入口 + 回归测试（分类模式为实测最优，basic 可回退）
+scripts/deploy_nginx.sh                 # 默认 adaptive；--mode basic 回退
 tests/test_nginx_basic.sh
 bench/abcd_experiment.sh --workload nginx --runs 20 --duration 60 --warmup 10 \
-  --arms A,B --results results/nginx-4
+  --arms A,B,C,D --results results/nginx-7
 
 # MySQL（先跑 scripts/setup_mysql.sh 准备环境）
 bench/abcd_experiment.sh --workload mysql --runs 10 --duration 60 --warmup 10 \

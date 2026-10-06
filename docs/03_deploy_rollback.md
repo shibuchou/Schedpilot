@@ -60,6 +60,19 @@ scripts/schedpilotctl.sh start --mode adaptive --config configs/cgroup-demo.conf
 tests/test_cgroup_targeting.sh
 ```
 
+## 3.2 P1 旋钮（全部 opt-in，默认不影响既有行为）
+
+| 配置 | 默认 | 作用 | 验证 |
+|---|---|---|---|
+| `targets.cgroup_paths` / `bg.cgroup_paths` | 空 | 按 cgroup v2 子树选择目标（§3.1） | `tests/test_cgroup_targeting.sh` 5/5 |
+| `bg.cpu_pool` | 空 | 动态 BG CPU 池：非 BG 目标存在时把 BG 任务全部线程钉到池 CPU；目标消失自动恢复原亲和 | `tests/test_bg_cpu_pool.sh` 5/5 |
+| `classifier.cusum` | false | CUSUM 相位检测：工作负载电平突变时一次性绕过滞回（JSONL 含 `phase` 标记） | `make test`（≤2 周期 vs ≥3 周期） |
+| `classifier.numa` | true | NUMA locality **报告**（JSONL `numa_local_pct/numa_nodes`），不参与决策 | 集成测试断言字段存在 |
+| `classification.cusum_h/slack` | 5.0 / 0.5 | CUSUM 阈值与单步容忍漂移 | 同上 |
+
+开销折算：`bench/measure_overhead.sh --duration 20`（需调度器在线）输出 daemon CPU、派发频次、
+每请求折算（内核 BPF struct_ops runtime 在当前 6.6 backport 不单独暴露）。
+
 ## 4. 停止与回滚
 
 ```bash

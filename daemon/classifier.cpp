@@ -56,6 +56,37 @@ ClassDecision Classifier::update(uint32_t tgid, const Features &f)
 	}
 	st.primed = st.primed || f.sched_valid;
 
+	/*
+	 * CUSUM phase detection (opt-in): track the slow baseline of the
+	 * wake-rate level and alarm when the cumulative deviation exceeds the
+	 * threshold. A phase shift bypasses hysteresis once so the new level
+	 * is adopted immediately instead of waiting for N stable cycles.
+	 */
+	bool phase = false;
+	if (s_.cusum && f.sched_valid) {
+		if (!st.base_primed) {
+			st.wake_base = st.wake;
+			st.base_primed = true;
+		} else {
+			double base = std::max(1.0, st.wake_base);
+			double dev = (st.wake - st.wake_base) / base;
+			st.cusum_pos = std::max(
+				0.0, st.cusum_pos + dev - s_.cusum_slack);
+			st.cusum_neg = std::max(
+				0.0, st.cusum_neg - dev - s_.cusum_slack);
+			if (st.cusum_pos > s_.cusum_h ||
+			    st.cusum_neg > s_.cusum_h) {
+				phase = true;
+				st.cusum_pos = 0;
+				st.cusum_neg = 0;
+				st.wake_base = st.wake; // restart at new phase
+			} else {
+				st.wake_base = 0.05 * st.wake +
+					       0.95 * st.wake_base;
+			}
+		}
+	}
+
 	uint32_t raw = SP_CLASS_NORMAL;
 	double confidence = 0;
 	std::string reason;
@@ -122,6 +153,12 @@ ClassDecision Classifier::update(uint32_t tgid, const Features &f)
 		st.candidate = raw;
 		st.streak = 0;
 		d.changed = raw != SP_CLASS_NORMAL;
+	} else if (phase && raw != st.current) {
+		// phase shift: trust the new level immediately (once)
+		st.current = raw;
+		st.candidate = raw;
+		st.streak = 0;
+		d.changed = true;
 	} else if (raw == st.current) {
 		st.candidate = raw;
 		st.streak = 0;
@@ -146,6 +183,9 @@ ClassDecision Classifier::update(uint32_t tgid, const Features &f)
 	d.klass = st.current;
 	d.confidence = confidence;
 	d.reason = reason;
+	d.phase = phase;
+	if (phase)
+		d.reason += " [phase-shift]";
 	return d;
 }
 

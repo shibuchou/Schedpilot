@@ -63,6 +63,10 @@ if [ "$WITH_INTERFERENCE" = "1" ]; then
 		--cpu-workers "$IF_CPU_WORKERS" --vm-workers "$IF_VM_WORKERS" \
 		--vm-bytes "$IF_VM_BYTES" >/dev/null || true
 	sleep 2
+	"$ROOT/bench/interference.sh" status | grep -q running || {
+		echo "[FAIL] interference is not running after start" >&2
+		exit 1
+	}
 fi
 
 # ---------- warmup ----------

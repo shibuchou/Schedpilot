@@ -15,7 +15,7 @@
 | 4 | 数据面设计 | L-SYNC 短片优先+唤醒预抢占；C-COMPUTE 公平 vtime；M-BOUND 长片+LLC 软亲和+迁移惩罚上限；**BG 收容：短切片(2ms)×vtime×2** | DSQ/切片参数表；`bg_slice` 不变式注释 |
 | 5 | 控制面与分类器 | 调度事件（wake rate/run/delay/切换）+ PMU（IPC/MPKI）→ EWMA+非对称滞回三分类；BG 显式配置；自适应旋钮全部有界、可消融 | JSONL 样例（L-SYNC/BG/M-BOUND 各一条，含特征） |
 | 6 | 工程正确性（亮点） | **formal-3 冻结复跑发现真实回归**（D 仅 +16.4%、p99≈10ms）→ 消融二分（pilot-6→9）定位"LAT 预抢占限流 + bg_slice 10ms" → 修复后 formal-4 +172.5%；全过程数据/哈希/负结果保留 | 回归时间线图（+16.4% → +172.5%）；表：pilot-8/9 关键点 |
-| 7 | 三负载正式结果 | Redis D **+169.8%（20/20）**、goodput +170.2%、p99 −34.7%；MySQL +85.2%、p99 −74.8%；Nginx 分类模式 C **+124.8%、p99 −62.5%**（推荐 adaptive） | 三负载配对 CI 森林图（或三张小抄表） |
+| 7 | 三负载正式结果 | Redis D **+169.8%（20/20）**、goodput +170.2%、p99 −34.7%；MySQL +85.2%、p99 −74.8%；Nginx 分类模式 **C +167.8% / D +169.8%（20/20）、p99 均 −69.6%**（D 与 C 打平，推荐 adaptive） | 三负载配对 CI 森林图（或三张小抄表） |
 | 8 | 消融与外部对照 | B/C/D 递进归因；3 组消融 CI 重叠→趋势性（如实）；**scx_simple −51.7%/p99+351%，scx_flatcg 10/10 被内核看门狗卸载**——通用调度器在该场景不可用 | 消融/对照表（ext-2）+ flatcg 卸载 dmesg 截图 |
 | 9 | 稳定性与兼容 | 0 watchdog/失速；故障注入 6/6；soak 0 失速；**SP3 自编译内核零改动编译通过、加载运行、迷你 A/D +129%** | `sched_ext state=enabled` 截图；SP3 结果小卡 |
 | 10 | 演示与交付 | 10 分钟演示；一键脚本；证据链（commit+SHA256+原始归档）；未来：CUSUM 相位、NUMA、动态 BG pool | 仓库结构/Q R 码（提交包索引）；演示截图 |
@@ -38,7 +38,7 @@
 | 4:40–5:30 | `grep -m2 '"class":"L-SYNC"' $RUN/D/run-01/logs/*.jsonl` + `grep -m2 '"class":"BG"'` | "每一次分类都有可审计日志：redis-server 被判 L-SYNC（高唤醒+高 IPC），stress-ng 是显式 BG——不是黑盒调参。" |
 | 5:30–6:30 | 故障演示：`kill -9 $(pgrep -f 'scx_schedpilot --mode')` → `cat /sys/kernel/sched_ext/state` = disabled | "调度器在内核里必须能被信任：loader 挂了，内核自动切回 fair，业务无损；daemon 挂了 BPF 保持安全参数。故障注入 6/6 通过。" |
 | 6:30–8:00 | PPT 第 6–8 页（回归故事 + 三负载 + flatcg） | 口播回归故事 45 秒：formal-3 暴露回归 → 二分定位 bg_slice → 修复 +172.5%；再讲 15 秒 flatcg 被看门狗卸载 10/10。 |
-| 8:00–9:00 | `scripts/deploy_nginx.sh`（adaptive 默认）或 PPT 第 9 页 | "MySQL/Nginx 同样是净收益：Nginx 从'推荐 basic'升级为分类模式 +124.8%/p99 −62.5%；SP3 内核兼容也过了。" |
+| 8:00–9:00 | `scripts/deploy_nginx.sh`（adaptive 默认）或 PPT 第 9 页 | "MySQL/Nginx 同样是净收益：Nginx 从'推荐 basic'升级为分类模式 **+167.8%/+169.8%、p99 −69.6%**；SP3 内核兼容也过了。" |
 | 9:00–10:00 | `scripts/schedpilotctl.sh rollback` + `dmesg \| grep -a sched_ext \| tail` + PPT 第 10 页 | "一键回滚、0 失速；证据链在仓库（commit/SHA256/原始归档）。谢谢。" |
 
 **录屏注意事项**

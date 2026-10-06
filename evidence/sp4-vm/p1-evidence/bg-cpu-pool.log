@@ -1,0 +1,14 @@
+[bgpool-test] starting redis-server (port 6404) inside /tmp/bgpool-cgroup2.299656/schedpilot-bgpool/svc
+[bgpool-test] starting stress-ng (BG) workers
+[bgpool-test] starting SchedPilot (class mode) with bg.cpu_pool=2-3
+[bgpool-test] stress-ng tid=299674 affinity=2,3
+[bgpool-test] PASS  BG worker confined to pool CPUs (2,3)
+[bgpool-test] PASS  daemon log records pool confinement
+[bgpool-test] killing target (redis) to trigger pool release
+[bgpool-test] stress-ng tid=299674 affinity after release=0-15
+[bgpool-test] PASS  confinement released, affinity restored (0-15)
+[bgpool-test] PASS  daemon log records pool release
+[bgpool-test] NUMA reporting field check
+[bgpool-test] PASS  JSONL samples carry NUMA locality fields
+[bgpool-test] summary pass=5 fail=0
+[bgpool-test] BG CPU POOL PASS

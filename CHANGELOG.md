@@ -30,6 +30,26 @@
   p99 −12%；外部对照 X-simple −51.7%（p99 +351.9%）、**X-flatcg 10/10 轮被 watchdog 卸载（无有效轮次）**；
   故障注入 6/6 PASS；15 分钟 soak 49 周期 0 失速 PASS；归档 SHA256 见 §6.10。
 
+## v0.3.3 — 构建加固与 P1 特性（2026-10-06）
+
+- **构建/ABI 加固（nginx-6 D 臂异常根因）**：`Makefile` 的 daemon 目标未依赖 `bpf/intf.h`，intf v1→v2 后
+  `schedpilotd` 未重编译（旧布局读新 cfg，`migrate_penalty_ns` 显示 (200<<32)+100 之类的打包值）。
+  修复：头文件依赖（`daemon/*.hpp`、`bpf/intf.h`）+ daemon 启动时 `intf_version` fail-fast。
+  受影响的 smoke-cleanup / nginx-5 / nginx-6 的 **D 臂判定为污染**（A/B/C 不受影响）。
+- **策略修正**：取消 `cache_slice` "低 MPKI 自动收缩到 2ms"规则（长切片对吞吐型 M-BOUND 有益；该收缩在
+  Nginx 上直接造成 D<C）。修复后 **nginx-7（A/B/C/D × 20×60s，0 无效）：D 与 C 打平**——C 配对 +167.81%
+  [141.06, 194.56]、D +169.82% [142.58, 197.06]（20/20 轮更高），p99 均 −69.6%（20/20 轮更低）；D vs C 中位 +0.4%/−0.8%。
+- **实验设施加固**：`interference.sh` 启动自检（子进程立即退出即报错）；`run_{redis,nginx,mysql}.sh` 断言
+  干扰存活（否则 run 失败）；`abcd_experiment.sh` 将 run 脚本非零退出标记为 INVALID；端口已被占用时
+  **接管并重钉** redis 到 server cpus（修复一次"未钉 redis"导致的 smoke 假象）。
+- **调度器开销折算**：`bench/measure_overhead.sh`——pinned 场景 20s / 1,076,000 请求下 **schedpilotd
+  0.9~1.3% 单核 ≈ 235 ns/请求**、派发 0.082 次/请求（~4.4k/s）；内核侧 BPF struct_ops 运行时间在本
+  6.6 backport 内核不暴露（如实标注，见 §6.11）。
+- **P1 特性（§6.13）**：CUSUM 相位检测（opt-in，单测：≤2 周期 vs ≥3 周期）；NUMA locality 报告
+  （`classifier.numa`，JSONL `numa_local_pct/numa_nodes`，report-only）；**动态 BG CPU pool**
+  （`bg.cpu_pool`，daemon 对 BG 全线程 setaffinity、目标消失即恢复；集成测试 5/5 PASS，SP4 与 SP3）。
+- 文档/证据同步：nginx-7、P1 证据、归档哈希（§6.10/§6.11/§6.13、evidence_index）。
+
 ## v0.3.2 — 复审优化（2026-10-05）
 
 - **Nginx 分类模式转正（nginx-5 → nginx-6 正式确认）**：迁移惩罚上限 + 退化 LLC 关路由 + BG 短切片修复后，分类模式（C）
