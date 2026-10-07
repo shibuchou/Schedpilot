@@ -12,9 +12,9 @@ formal-2 在固定混部场景下达到并超过 ≥10% 吞吐验收指标（D v
 | 类别 | 状态 |
 |---|---|
 | 代码实现（BPF/loader/daemon/脚本） | 完成（v0.3.0-mvp） |
-| 开发机全量编译（BPF 对象 + loader + daemon） | **通过**（rd350x，2026-09-29） |
+| 开发机全量编译（BPF 对象 + loader + daemon） | **通过**（开发机，2026-09-29） |
 | 脚本语法检查（bash -n）与 Python 编译检查 | **通过** |
-| env_check 能力探测脚本实跑 | **通过**（rd350x 真实输出，JSON 已归档） |
+| env_check 能力探测脚本实跑 | **通过**（开发机真实输出，JSON 已归档） |
 | 统计/分析脚本空输入冒烟 | **通过**（无崩溃，正确输出空表） |
 | sched_ext 加载/卸载验证 | **通过**（SP4 VM，6.6.0-schedpilot 自编译内核；§6.2） |
 | PMU 采样实跑 | **通过**（SP4 VM 内 perf stat 与 schedpilotd 实测；§6.1/§6.3） |
@@ -23,13 +23,13 @@ formal-2 在固定混部场景下达到并超过 ≥10% 吞吐验收指标（D v
 
 ## 2. 目标环境状态（openEuler 24.03 LTS SP4）
 
-- 主环境：`192.168.1.123:/root`（openEuler 24.03 LTS SP4）。
+- 主环境：原 SP4 实验环境（openEuler 24.03 LTS SP4；历史记录见下）。
 - 2026-09-29 开发期间连通性探测（实际执行）：
   - 通过实验网关端口映射探测 SSH（网关公网地址略）：`TcpTestSucceeded=False`（端口映射超时）；
-  - 从 rd350x（192.168.1.108）`ping 192.168.1.123` → 100% packet loss；`/dev/tcp/192.168.1.123/22` → no route to host。
+  - 从开发机到原环境（内网）`ping` → 100% packet loss；SSH 端口 → no route to host。
 - 结论：SP4 整机离线，sched_ext 加载与性能实验无法执行。恢复后按 `docs/02_test_plan.md` 与 `bench/abcd_experiment.sh` 一键执行。
 
-## 3. 开发机编译验证（rd350x，实际执行）
+## 3. 开发机编译验证（实际执行）
 
 ### 3.1 环境（`scripts/env_check.sh` 实测）
 
@@ -79,7 +79,7 @@ formal-2 在固定混部场景下达到并超过 ≥10% 吞吐验收指标（D v
 | clang 18 BPF 后端崩溃 | `UEI_RECORD` 的 32 位 cmpxchg 无法选择指令 | 增加 `-mcpu=v3`（与内核树 tools/sched_ext Makefile 一致） |
 | skeleton 命名不符 | bpftool 默认生成 `scx_schedpilot_bpf__*`，与 `SCX_OPS_*` 宏期望不符 | `bpftool gen skeleton <obj> name scx_schedpilot` |
 | bpftool 7.4 不生成 `struct_ops` 成员 | 上游头文件 `compat.h`/`user_exit_info.h` 编译失败 | 开发用头文件做最小补丁（见 `third_party/scx-dev/PROVENANCE.md`）；目标 SP4 构建使用内核树头文件，不受影响 |
-| GitHub 不可达 | rd350x 无法克隆 scx 仓库 | 使用本机内核树自带 `tools/sched_ext` 头文件；BTF 从 kernel.ubuntu.com 获取 |
+| GitHub 不可达 | 开发机无法克隆 scx 仓库 | 使用本机内核树自带 `tools/sched_ext` 头文件；BTF 从 kernel.ubuntu.com 获取 |
 
 ## 5. 待执行项（SP4 恢复后）
 
@@ -100,8 +100,8 @@ formal-2 在固定混部场景下达到并超过 ≥10% 吞吐验收指标（D v
 
 | 项 | 值 |
 |---|---|
-| 宿主 | rd350x（KVM），桥接 phybr0 |
-| 虚拟机 | `schedpilot-sp4` @ 192.168.1.131（实验内网），16 vCPU / 32 GiB / 200 GiB |
+| 宿主 | KVM 宿主（Ubuntu），桥接网络 |
+| 虚拟机 | 实验虚拟机（KVM 桥接），16 vCPU / 32 GiB / 200 GiB |
 | OS / kernel | openEuler 24.03 LTS SP4 / **6.6.0-schedpilot**（自编译，`CONFIG_SCHED_CLASS_EXT=y`） |
 | PMU | **可用**（VM 内 `perf stat` 实测 cycles/instructions/cache-refs/cache-misses；multiplex scaling 已实现） |
 | 工具链 | clang 17.0.6 / gcc 12.3.1 / bpftool 7.2.0 / libbpf 1.2.2 / perf 6.6.0 |
@@ -149,7 +149,7 @@ Pipeline 全通：`bench/abcd_experiment.sh` 自动完成 A/B/C/D 交织、干�
 - **已验证**：sched_ext 闭环、PMU 采样与 scaling、EWMA+滞回三分类（L-SYNC 已实际触发）、策略 generation/心跳/上下界、A/B/C/D 与消融流水线、原始证据归档。
 - **当前证据**：B 臂（基础 sched_ext）在两组 pilot 中对 p99 分别改善 **-14.8%（p=0.021）** 与 **-7.6%（p=0.043）**，是主要收益来源；C/D 在小样本下波动大（C 在 pilot-4 出现显著回归），**尚不能支撑最终 ≥10% 结论**。
 - **未完成**：正式验收矩阵（≥20 次 × 60s × A/B/C/D + 消融）、无干扰回归 ±2%、C/D 分类路由稳定化与归因细化。
-- **噪声背景**：宿主 rd350x 同时运行其他 KVM 负载，15s 短窗口方差明显；正式实验需延长稳态窗口并固定宿主条件。
+- **噪声背景**：宿主同时运行其他 KVM 负载，15s 短窗口方差明显；正式实验需延长稳态窗口并固定宿主条件。
 
 ### 6.6 正式矩阵（formal-1：7 臂 × 20 轮 × 60s，2026-09-30）
 
@@ -316,7 +316,7 @@ Pipeline 全通：`bench/abcd_experiment.sh` 自动完成 A/B/C/D 交织、干�
    p<0.0001）**；分类模式下的 Nginx 尾延迟优化列为 P1。
 2. **二进制修订差异**：formal-2/noif-1/ext-1 与 nginx-2/mysql-2 使用修复过程中不同 revision 的产物；
    每次实验记录 `git_commit`，二进制 SHA256 以 VM `build/` 为准（见证据索引说明）。
-3. 原 SP4（192.168.1.123）**本身也是虚拟机而非物理机**，与本实验所用自建 SP4 KVM 虚拟机（6.6.0-schedpilot）环境等价，不构成环境缺口；
+3. 原 SP4 实验环境**本身也是虚拟机而非物理机**，与本实验所用自建 SP4 KVM 虚拟机（6.6.0-schedpilot）环境等价，不构成环境缺口；
    全部结论在该环境完成。若原机恢复，可做一次交叉复测作为加分项（非阻塞）。
 
 **故障注入（tests/test_fault_injection.sh）**：6/6 PASS
@@ -337,7 +337,7 @@ formal-3 暴露真实回归（D 仅 +16.4%、p99 ≈10ms，且无 watchdog、0 i
 - `git_commit`：`be962b8a4f093e4c23396d7ce78afc57b866b234`；kernel `6.6.0-schedpilot`；场景 v3；fail-fast。
 - 二进制 SHA256（`experiment.meta.json` 记录，三实验一致）：
   `scx_schedpilot` `9d1e904f…cfd09f`、`schedpilotd` `d02d4e0d…d46e6a`、`bpf_object` `a204183a…f35d206`。
-- 原始数据归档（VM `/root/` 与本机 `D:\code\Ubuntu\raw-archive\`，仓库内为等价摘要）：
+- 原始数据归档（实验机归档目录与本机归档目录，路径随部署环境；仓库内为等价摘要）：
 
 | 归档 | 大小 (bytes) | SHA256 |
 |---|---|---|

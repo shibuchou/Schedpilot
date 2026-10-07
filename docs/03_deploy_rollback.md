@@ -15,7 +15,8 @@
 
 ```bash
 # 目标环境（权威构建，使用目标内核树 sched_ext 头文件）：
-scripts/build.sh --kernel-src /root/kernel-src --install
+KSRC=/usr/src/linux-6.6.0-<ver>.oe2403sp4.x86_64   # 按实际内核源码树替换
+scripts/build.sh --kernel-src "$KSRC" --install
 # -> /usr/local/bin/scx_schedpilot（loader）
 # -> build/schedpilotd          （daemon）
 

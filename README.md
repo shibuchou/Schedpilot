@@ -92,3 +92,16 @@ scripts/schedpilotctl.sh rollback
 - MVP 范围与 P1/P2：`docs/00_mvp_scope.md`
 - 总体方案与长期 roadmap：`SchedPilot_设计方案.md`
 - 提交包索引：`submission/README.md`
+
+## 后续规划（省赛后）
+
+| 项 | 说明 | 优先级 |
+|---|---|---|
+| 单一最终构建全量矩阵 | 在 v0.3.3 最终构建上复跑 Redis/MySQL 正式矩阵（formal-5 / mysql-5）；当前结论已由敏感性复跑验证，方向不变（可选） | P1 |
+| 自动调参 | 爬山/贝叶斯优化替代规则型有界调整（MVP 已留旋钮与 generation 接口） | P2 |
+| producer-consumer 识别 | 唤醒链同域共置（当前以 waker-LLC 启发式替代；本 VM 因 LLC 拓扑退化关路由） | P2 |
+| NUMA 决策化 | 现为 locality 报告（`classifier.numa`）；下一步将其纳入 CACHE 路由/迁移决策 | P2 |
+| BPF overhead 精确折算 | 当前内核不为 struct_ops 暴露 `run_time_ns`；待内核/工具支持后补测 | P2 |
+| SP1 兼容验证 | SP3 已验证；SP1 镜像不可得，待获取后按 §6.12 方法复测 | P3 |
+| 答辩材料成稿 | PPT 成稿 + 演示视频录制（提纲/脚本已就绪，见 `submission/defense_pack.md`） | 线下 |
+| 容器资源模型深化 | cgroup 目标选择已实现；下一步结合容器 QoS/配额做类优先级映射 | P1 |

@@ -75,6 +75,6 @@
 
 ```bash
 scripts/env_check.sh --json evidence/env_check.json
-scripts/build.sh --kernel-src /root/kernel-src --install
+scripts/build.sh --kernel-src "$KSRC" --install
 bench/abcd_experiment.sh --runs 20 --duration 60 --results results/$(date +%Y%m%d-%H%M%S)
 ```

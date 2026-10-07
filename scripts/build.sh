@@ -6,7 +6,7 @@
 #
 # Target build on the frozen environment (openEuler 24.03 LTS SP4) using the
 # exact kernel tree headers (authoritative for competition results):
-#   scripts/build.sh --kernel-src /root/kernel-src [--install]
+#   scripts/build.sh --kernel-src <kernel-tree> [--install]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

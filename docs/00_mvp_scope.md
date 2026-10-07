@@ -38,3 +38,9 @@ formal-3 回归的发现与修复、故障注入、长稳、CI、双平台仓库
 任何受硬件、PMU、kernel API、sched_ext backport 限制无法实现的能力，必须在本目录
 `docs/04_test_report.md` 记录：**探测命令、实际输出、原因、降级方案、当前状态**。
 禁止以设计或预期代替实际结果；禁止伪造性能数据。
+
+## 4. 后续规划（省赛后）
+
+见 `README.md`「后续规划（省赛后）」：单一最终构建全量矩阵（formal-5/mysql-5，可选）、
+自动调参 / producer-consumer 识别 / NUMA 决策化 / BPF overhead 精确折算（P2）、
+SP1 兼容复测（P3，镜像待获取）、答辩材料成稿与录制（线下）。

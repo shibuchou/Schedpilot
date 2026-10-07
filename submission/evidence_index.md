@@ -9,7 +9,7 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 | 证据 | 位置 |
 |---|---|
 | SP4 VM 能力探测（OS/kernel/config/BTF/sched_ext/工具链/PMU） | `evidence/sp4-vm/env_check.json` |
-| 开发机编译验证（rd350x） | `evidence/rd350x-dev-20260929/` |
+| 开发机编译验证（Ubuntu 24.04） | `evidence/rd350x-dev-20260929/` |
 
 ## 最终正式矩阵（场景 v3，冻结提交 `be962b8`，0 无效轮次）
 
@@ -30,7 +30,7 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 
 ## 冻结归档（原始 tar.gz，SHA256）
 
-归档存放于实验机 `/root/` 与本机 `D:\code\Ubuntu\raw-archive\`（仓库仅存摘要与哈希）：
+归档存放于实验机归档目录与本机归档目录（路径随部署环境；仓库仅存摘要与哈希）：
 
 | 归档 | 大小 (bytes) | SHA256 |
 |---|---|---|

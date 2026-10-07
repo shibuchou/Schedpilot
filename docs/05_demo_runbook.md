@@ -1,8 +1,9 @@
 # SchedPilot 10 分钟演示流程（评审现场版）
 
-本流程在实验 VM（`schedpilot-sp4`，openEuler 24.03 LTS SP4 + `6.6.0-schedpilot` 内核）上按顺序执行：
+本流程在目标环境的**仓库根目录**按顺序执行（下称 `$REPO`；环境要求：openEuler 24.03 LTS SP4 或等效
+openEuler 环境 + 启用 `CONFIG_SCHED_CLASS_EXT` 的内核，已按 `docs/03_deploy_rollback.md` 完成构建）：
 **项目怎么运转（1 分钟）→ 混部优势实验（3 分钟）→ 分类实况（1 分钟）→ 安全兜底（1 分钟）→ 收尾（30 秒）**，
-命令总计约 3 分钟，配合讲解控制在 **10 分钟以内**。所有命令均可直接复制执行（工作目录 `/root/schedpilot`）。
+命令总计约 3 分钟，配合讲解控制在 **10 分钟以内**。所有命令均可直接复制执行。
 
 > 讲解主口径：同 CPU 干扰混部下，SchedPilot 全自适应模式（D）相对 openEuler 默认 fair 调度器（A）
 > **QPS +160% 量级、p99 −35%**（正式 20 轮统计口径：QPS 配对 **+169.8% [164.4, 175.2]，20/20 轮更高**，
@@ -27,7 +28,7 @@
 ## 0. 环境自检（约 5 秒）
 
 ```bash
-cd /root/schedpilot
+cd <仓库根目录>
 scripts/env_check.sh | tail -n 8
 ```
 
@@ -36,8 +37,8 @@ scripts/env_check.sh | tail -n 8
 ```
 [OK] workload.sysbench            /usr/bin/sysbench
 [OK] workload.stress-ng           /usr/bin/stress-ng
-[OK] schedpilot.loader            /root/schedpilot/build/scx_schedpilot
-[OK] schedpilot.daemon            /root/schedpilot/build/schedpilotd
+[OK] schedpilot.loader            $REPO/build/scx_schedpilot
+[OK] schedpilot.daemon            $REPO/build/schedpilotd
 [OK] schedpilot.pinned_maps       cfg class_map cpu_llc stats tg_stats
 === summary: OK=34 WARN=1 FAIL=0 ===
 ```
