@@ -11,19 +11,33 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 | SP4 VM 能力探测（OS/kernel/config/BTF/sched_ext/工具链/PMU） | `evidence/sp4-vm/env_check.json` |
 | 开发机编译验证（Ubuntu 24.04） | `evidence/rd350x-dev-20260929/` |
 
-## 最终正式矩阵（场景 v3，冻结提交 `be962b8`，0 无效轮次）
+## 最终正式矩阵（场景 v3）
+
+> ⚠️ **"冻结 commit"与"0 无效轮次"都只对部分实验成立，请勿整节引用：**
+> - 本节冻结主键写作 `be962b8`，但其中 `nginx-6` 的 meta 是 `0aa63b0`、`nginx-7` 是 `3fdaf80`；
+> - `ext-2` 有 **10/10 无效轮次**（`ext-2/invalid.log`）；
+> - `nginx-5/6` 的 D 臂因构建依赖缺陷作废，且 `nginx-6/summary.md` 仍显示 D 有效
+>   （其 `invalid.log` 未归档）；
+> - 因此"0 无效轮次"**只适用于 formal-4 / formal-5 / mysql-3 / nginx-4**。
+> - **对外引用 Redis 头条时请用 `formal-5`（最终构建 `65c4485`，与现场二进制同一套）**；
+>   `formal-4`（`be962b8`）保留为前代构建的独立复现。
+>
+> **更严谨的做法是以二进制 SHA256（而非 commit）作为冻结主键** —— 归档中同一个 `be962b8`
+> 就出现过两个不同的 loader 哈希（`9d1e904f` 与 `76f0cad3`）。自 `formal-5` 起按此执行
+> （`formal-5` 的 meta 同时记录了 commit `65c4485` 与三份二进制 SHA256）。
 
 | 实验 | 内容 | 位置 | 结论（配对逐轮复算） |
 |---|---|---|---|
+| **formal-5（最终构建）** | Redis A,D × 20 × 60s，commit **`65c4485`**，loader `76f0cad3` / daemon `68e57608` | `evidence/sp4-vm/formal-5/` | **D QPS 中位 +183.8%、配对 +181.5% [+174.2, +188.8]，20/20 轮更高**；goodput@SLO +182.1%；p99 −34.8%（20/20 更低）；p50 −86.9%；**0 无效轮次**；构建可复现证明见同目录 `rebuild-proof.txt` |
 | **formal-4** | Redis 7 臂 × 20 × 60s | `evidence/sp4-vm/formal-4/` | **D QPS +169.8% [+164.4, +175.2]，20/20 轮更高**；goodput@SLO +170.2%；p99 −34.7% |
 | **mysql-3** | MySQL 4 臂 × 10 × 60s | `evidence/sp4-vm/mysql-3/` | **D TPS +85.2% [+62.0, +108.3]，10/10**；p99 −74.8% [−82.4, −67.3] |
 | **nginx-4** | Nginx A,B × 20 × 60s | `evidence/sp4-vm/nginx-4/` | **B QPS +50.1% [+35.1, +65.2]，20/20**；p99 −34.1% [−43.5, −24.6]，17/20 轮更低（basic） |
 | **nginx-5** | Nginx 分类模式复检 A,B,C,D × 10 × 60s | `evidence/sp4-vm/nginx-5/` | C +124.8% [+102.6, +146.9]，10/10；p99 −62.5% [−68.4, −56.6]，10/10（P1 尾延迟问题消除） |
 | **nginx-6** | Nginx 分类模式确认 A,B,C,D × 20 × 60s | `evidence/sp4-vm/nginx-6/` | C +143.1% [+118.7, +167.6]，20/20；p99 −66.3%（**D 臂因构建依赖缺陷污染，作废**，见 §6.13） |
 | **nginx-7** | Nginx 修正后正式矩阵 A,B,C,D × 20 × 60s | `evidence/sp4-vm/nginx-7/` | **C +167.8% / D +169.8% [+142.6, +197.1]（20/20）；p99 均 −69.6%（20/20）**；D vs C 打平（推荐 adaptive） |
-| P1 证据 | overhead / BG pool / cgroup 测试 | `evidence/sp4-vm/p1-evidence/` + `evidence/sp4-vm/smoke-fixed/` | 开销 ≈235 ns/请求；BG pool 5/5；cgroup 5/5；smoke +201.0% |
+| P1 证据 | overhead / BG pool / cgroup 测试 | `evidence/sp4-vm/p1-evidence/` + `evidence/sp4-vm/smoke-fixed/` | 开销 **≈0.24–0.28 μs/请求**（两个测量窗口不完全对齐，见 §6.11）；BG pool 5/5；cgroup 5/5；smoke-fixed +201.0%（n=3×20s，**趋势参考，不作性能结论**） |
 | **noif-2** | Redis 无干扰 4 臂 × 10 × 60s | `evidence/sp4-vm/noif-2/` | C/D 吞吐 −3.2%~−3.3%（10/10 轮为负）、p99 −11%~−12%；B −5.7% / p99 −17.6% |
-| **ext-2** | Redis 外部对照 5 臂 × 10 × 60s | `evidence/sp4-vm/ext-2/` | D +169.6% [+158.2, +181.1]；X-simple −51.3% / p99 +351.9%；X-flatcg **10/10 被 watchdog 卸载，无有效轮次** |
+| **ext-2** | Redis 外部对照 5 臂 × 10 × 60s | `evidence/sp4-vm/ext-2/` | D +169.6% [+158.2, +181.1]；X-simple **−51.7%（中位）/ −51.28%（配对）**、p99 +351.9%；X-flatcg **10/10 被 watchdog 卸载，无有效轮次** |
 
 各实验的完整原始数据（每次运行的 workload 输出 / perf stat / daemon JSONL / cfg / 调度器状态 / dmesg）
 保存在实验机的 `results/<experiment>/` 目录；本仓库 `evidence/sp4-vm/` 归档关键摘要（summary/meta/per_run/env_check）。
@@ -34,6 +48,7 @@ Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 
 
 | 归档 | 大小 (bytes) | SHA256 |
 |---|---|---|
+| **formal-5-raw.tar.gz（最终构建 `65c4485`）** | **1962090** | **`0f6e7714e5ae91c639f1cd89d4c1bf33017ca1ebad75b6b4eaf8a761c656bdf3`** |
 | formal-4-raw.tar.gz | 9874464 | `a19897bb02bc33df66d47b4a0702982d3308683ec45ea3ef4b9de232de278ac7` |
 | mysql-3-raw.tar.gz | 1819807 | `1268cbbe64698bbea623d305e1366a0b10b63c0c90c5a82860563b40b313b137` |
 | nginx-4-raw.tar.gz | 86662 | `3b56941af02b2e5af55ad0f41fed131ebfa722f35b8ab4699aaea1021216c6aa` |

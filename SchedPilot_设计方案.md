@@ -4,7 +4,8 @@
 > 对应赛题：华为命题 ——《基于 BPF/sched_ext 的用户态高性能动态调度器》（国产操作系统软件组）
 > 命题企业：华为技术有限公司
 > 主开发与性能测试环境：openEuler 24.03 LTS SP4（冻结）；SP1/SP3 仅作有时间时的兼容验证
-> 状态：v0.3 省赛 MVP 收敛版（实现落地中，代码位于本目录同一仓库）
+> 状态：v0.3.3（**已交付**；本文件是**设计与计划**文档，最新结果与口径以 `README.md` 和
+> `docs/04_test_report.md` 为准 —— 本文中"待执行 / 落地中"等表述属历史阶段记录，不代表当前状态）
 > 创建日期：2026-09-29
 
 ---
@@ -57,7 +58,9 @@
 1. **真正使用 BPF/sched_ext**：SchedPilot 的主执行路径是 `SCX_OPS` 调度器，用户态负责特征分析和策略决策，BPF 负责调度快速路径；不把 cgroup、nice 或静态 CPU 配额包装成调度器。
 2. **感知 CPU/内存访问模式**：MVP 使用两类可解释特征——(a) 调度事件（wakeup 频率、平均运行时长、平均 run delay）；(b) 硬件 PMU（IPC、LLC MPKI，带 multiplex scaling）。NUMA 仅作为可选增强，且表述限定为“基于 NUMA node 与 /proc/[pid]/numa_maps 页面分布的 placement locality/mismatch 推断”。
 3. **先做可归因的 Redis 闭环**：先固定裸机/进程或 cgroup 的 Redis 混部 workload，完成 default fair → 基础 sched_ext → 分类调度 → full adaptive 的递进对照，再扩展 Nginx、MySQL 和 Kubernetes。
-4. **10% 是正式验收目标**：当前没有把目标性能写成已取得的结果；所有正式结论必须来自固定环境、重复实验、原始数据、配置和 commit 可追溯的证据包。
+4. **10% 是正式验收目标**：~~当前没有把目标性能写成已取得的结果~~ →
+   **该目标已达成并冻结**：Redis 混部场景 D vs A 配对 **+169.81%**（20/20 轮更高，n=20）；
+   所有正式结论均来自固定环境、重复实验、原始数据、配置与 commit 可追溯的证据包（见 `docs/04_test_report.md` §6.10）。
 5. **申请材料中的阶段出口**：报名与校赛阶段完成可演示 MVP；省赛强化阶段完成感知、DSQ、反馈与 Redis 性能验收；总决赛阶段完成多负载、运维回滚、文档和发布候选版本。
 
 ## 1. 赛题解读
@@ -412,18 +415,22 @@ flowchart TB
 
 ### 8.0 省赛冲刺计划（约 2 周，主计划）
 
+> ⚠️ **本表是 2026-09-29 的计划快照，其中的"待执行"已于 2026-10-02 起全部完成。
+> 实际结果请读 `README.md`（头条）、`docs/04_test_report.md`（完整矩阵与负结果）、
+> `submission/evidence_index.md`（证据索引）。** 下表状态列保留原样，作为"计划 vs 实际"的记录。
+
 > 原则：最小调度器 → 立即 benchmark → profiling → 一次只增加一个机制 → 再 benchmark → 只保留有稳定收益的机制。
 
-| 天 | 任务 | 出口 | 状态（2026-09-29） |
+| 天 | 任务 | 出口 | 状态（2026-09-29 快照；**均已实际完成**） |
 |---|---|---|---|
-| D1 | SP4 能力探测（`env_check.sh`）；用目标内核树构建 `scx_schedpilot` + `schedpilotd` | env JSON、可加载调度器、状态查询 | **待执行（SP4 离线）** |
-| D2 | B 臂基础调度器在 Redis 无干扰下跑通；A 臂基线复现 | 第一组 default fair vs B 曲线 | 待执行 |
-| D3–D4 | PMU 采样器 + eBPF 事件接入；三分类 observe-only 验证 | JSONL 分类日志、PMU scaling 证据 | 待执行 |
-| D5–D6 | C 臂三类 DSQ 静态策略；确认 dispatch/命中计数 | C vs B 曲线 | 待执行 |
-| D7–D8 | D 臂自适应 + LLC 迁移控制 + BG 收容 + 预抢占；消融开关 | D vs C 曲线 | 待执行 |
-| D9–D11 | Redis 混部正式矩阵，≥20 次有效交织重复 | summary.csv/md、原始数据 | 待执行 |
-| D12–D13 | 无干扰回归 ±2%、消融归因、稳定性/长稳 | 归因链与回归结论 | 待执行 |
-| D14 | 文档/测试报告/演示流程收口 | 可提交 MVP | 代码与文档已就绪，实验待跑 |
+| D1 | SP4 能力探测（`env_check.sh`）；用目标内核树构建 `scx_schedpilot` + `schedpilotd` | env JSON、可加载调度器、状态查询 | ~~待执行（SP4 离线）~~ → 完成（§6.1/§6.2） |
+| D2 | B 臂基础调度器在 Redis 无干扰下跑通；A 臂基线复现 | 第一组 default fair vs B 曲线 | ~~待执行~~ → 完成（`noif-1/2`） |
+| D3–D4 | PMU 采样器 + eBPF 事件接入；三分类 observe-only 验证 | JSONL 分类日志、PMU scaling 证据 | ~~待执行~~ → 完成 |
+| D5–D6 | C 臂三类 DSQ 静态策略；确认 dispatch/命中计数 | C vs B 曲线 | ~~待执行~~ → 完成（`formal-4` C +166%） |
+| D7–D8 | D 臂自适应 + LLC 迁移控制 + BG 收容 + 预抢占；消融开关 | D vs C 曲线 | ~~待执行~~ → 完成（LLC 在拓扑退化 VM 上自动关闭，见 S2） |
+| D9–D11 | Redis 混部正式矩阵，≥20 次有效交织重复 | summary.csv/md、原始数据 | ~~待执行~~ → 完成（`formal-4` 7 臂 × 20） |
+| D12–D13 | 无干扰回归 ±2%、消融归因、稳定性/长稳 | 归因链与回归结论 | ~~待执行~~ → 完成（**±2% 未达，实测 −3.3%，已如实记录**） |
+| D14 | 文档/测试报告/演示流程收口 | 可提交 MVP | ~~实验待跑~~ → 完成 |
 
 已提前在开发机完成（rd350x，非目标环境）：全量编译（BPF/loader/daemon）、脚本与统计工具、`env_check.sh`、A/B/C/D 编排与消融开关、证据目录结构；详见 `docs/04_test_report.md` 与 `evidence/rd350x-dev-20260929/`。
 

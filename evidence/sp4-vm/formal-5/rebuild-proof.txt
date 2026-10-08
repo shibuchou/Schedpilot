@@ -1,0 +1,60 @@
+SchedPilot 重建可复现性证明 — 2026-10-08
+================================================================================
+
+目的
+  验证"现场会上台的二进制就是 HEAD 源码树的产物"，从而闭合
+  "头条数字到底是哪个二进制跑出来的"这个溯源缺口。
+
+环境
+  host            : schedpilot-sp4   (openEuler 24.03 LTS-SP4, kernel 6.6.0-schedpilot)
+  repo            : /root/schedpilot @ 65c44854548a6dc0f305a3ee6022f758418b0272
+  working tree    : 仅 docs/05_demo_runbook.md 被修改、docs/06_demo_risks_qa.md 未跟踪
+                    （两者均为文档，不参与构建）
+  内核源码树      : /usr/src/linux-6.6.0-159.4.16.170.oe2403sp4.x86_64
+  编译器          : clang 17 (BPF / loader), g++ (GCC, daemon)
+
+过程
+  1. 备份重建前的 build/ 产物到 /root/schedpilot-backup-20261008/
+  2. 干净重建：
+       scripts/build.sh --kernel-src /usr/src/linux-6.6.0-159.4.16.170.oe2403sp4.x86_64
+     【注意】故意不加 --install。scripts/build.sh 在 --install 模式下只把 loader
+     装到 /usr/local/bin/scx_schedpilot，**不会更新 $ROOT/build/scx_schedpilot**；
+     而 scripts/schedpilotctl.sh 的 loader_bin() 优先使用 build/ 下的副本。
+     因此用 --install 重建后，演示实际跑的仍是旧二进制 —— 这是个真实的坑。
+  3. 比较重建前后的 SHA256
+  4. 构建耗时：10:12:20Z → 10:12:32Z（约 12 秒，16 vCPU）
+
+结果
+  --------------------------------------------------------------------------
+  binary                   before / after sha256
+  --------------------------------------------------------------------------
+  build/scx_schedpilot     76f0cad31ee56018f08fbd5d1fc0065500d72b2c0c0ced286720978eb89a9ccb
+                           → 重建后 IDENTICAL
+  build/schedpilotd        68e57608fa493a91aff4587afe4dd21035889e82a8f4f86a1e11acdebb55b05d
+                           → 重建后 IDENTICAL
+  --------------------------------------------------------------------------
+
+结论
+  1. 构建是**逐字节可复现**的：在 HEAD 65c4485 上重建得到的二进制，与机器上原有的
+     build/ 产物完全相同。
+  2. 因此"现场二进制"就是 HEAD 源码树的构建产物 —— 原先担心的
+     "现场二进制来路不明"并不成立。
+  3. 真正存在的缺口只是：**正式统计数字（+169.8%）来自更早的构建**
+     （commit be962b8，loader 9d1e904f / daemon d02d4e0d）。
+     该缺口由 formal-5（用当前构建在 HEAD 上补跑 A/D × 20 × 60s）闭合。
+
+历史附注（不影响结论，但值得记录）
+  归档中存在同一个 commit 对应两个 loader 哈希的情况：
+    formal-4   (be962b8): loader 9d1e904f / daemon d02d4e0d
+    nginx-5    (be962b8): loader 76f0cad3 / daemon d02d4e0d
+    smoke-cleanup (be962b8): loader 76f0cad3 / daemon d02d4e0d
+  既然构建是可复现的，同一 commit 出现两个 loader 哈希只能说明：
+  其中至少一次运行使用的是**改过源码但未提交的工作树**。
+  这也是为什么"以 commit 为冻结主键"不够严谨 —— 更稳妥的做法是以
+  **二进制 SHA256** 作为冻结主键（formal-5 起按此执行）。
+
+复现命令
+  cd /root/schedpilot
+  sha256sum build/scx_schedpilot build/schedpilotd
+  scripts/build.sh --kernel-src /usr/src/linux-6.6.0-159.4.16.170.oe2403sp4.x86_64
+  sha256sum build/scx_schedpilot build/schedpilotd

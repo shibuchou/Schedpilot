@@ -1,0 +1,20 @@
+digraph dataplane {
+  graph [fontname="Microsoft YaHei", bgcolor="white", pad=0.12, nodesep=0.30, ranksep=0.42];
+  node  [fontname="Microsoft YaHei", shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#2E6CA4", fontsize=13, margin="0.14,0.09"];
+  edge  [fontname="Microsoft YaHei", color="#5A5A5A", fontsize=11, arrowsize=0.7, penwidth=1.2];
+  rankdir=TB;
+  CLS  [label="分类结果（每 100ms 更新）", fillcolor="#FFF3D6", color="#B8860B"];
+  LAT  [label="LAT · 延迟敏感\n1ms 短切片 + 优先派发\n+ 唤醒抢占", fillcolor="#D8F0DC", color="#2E7D4F"];
+  COMP [label="COMP · 计算型\n公平排队"];
+  CACHE[label="CACHE · 内存型\n长切片 + 缓存亲和"];
+  BEST [label="BEST · 未分类\n回退通道", fillcolor="#F2F2F2", color="#777777"];
+  BG   [label="后台干扰\n（配置显式标记）\n2ms 短切片 + 权重折半", fillcolor="#FBE3E3", color="#B04A4A"];
+  GD   [label="安全不变式：任何队列等待超过 20ms 即刻优先服务\n→ 是「分级」而不是「饿死」", shape=note, fillcolor="#FFF8E1", color="#B8860B", fontsize=11.5];
+  CLS -> LAT; CLS -> COMP; CLS -> CACHE; CLS -> BEST;
+  { rank=same; LAT; COMP; }
+  { rank=same; CACHE; BEST; }
+  LAT -> CACHE [style=invis];
+  COMP -> BEST [style=invis];
+  BG -> LAT [label=" 排在在线服务之后 ", style=dashed, color="#B04A4A", constraint=false];
+  CACHE -> GD [style=invis];
+}

@@ -1,0 +1,28 @@
+digraph failopen {
+  graph [fontname="Microsoft YaHei", bgcolor="white", pad=0.12, nodesep=0.30, ranksep=0.42];
+  node  [fontname="Microsoft YaHei", shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#2E6CA4", fontsize=13, margin="0.14,0.09"];
+  edge  [fontname="Microsoft YaHei", color="#5A5A5A", fontsize=11, arrowsize=0.7, penwidth=1.2];
+  rankdir=TB;
+  subgraph cluster_ok {
+    label="正常态"; fontsize=13; fontcolor="#2E7D4F"; color="#2E7D4F"; style="rounded,filled"; fillcolor="#F3FAF5";
+    O1 [label="loader + 判断程序 均在运行", fillcolor="#D8F0DC", color="#2E7D4F"];
+    O2 [label="调度器按分类结果动态工作\nstate=enabled，flags=0x1b", fillcolor="#D8F0DC", color="#2E7D4F"];
+    O1 -> O2;
+  }
+  subgraph cluster_a {
+    label="兜底①：loader 被杀"; fontsize=13; fontcolor="#B04A4A"; color="#B04A4A"; style="rounded,filled"; fillcolor="#FDF5F5";
+    A1 [label="内核自动摘除调度器", fillcolor="#FBE3E3", color="#B04A4A"];
+    A2 [label="默认调度器接管\nstate=disabled，业务不中断", fillcolor="#FBE3E3", color="#B04A4A"];
+    A1 -> A2;
+  }
+  subgraph cluster_b {
+    label="兜底②：判断程序被杀"; fontsize=13; fontcolor="#B8860B"; color="#B8860B"; style="rounded,filled"; fillcolor="#FFFBF0";
+    B1 [label="心跳 2 秒超时", fillcolor="#FFF3D6", color="#B8860B"];
+    B2 [label="BPF 退回静态安全参数\n调度器不离场（state 仍 enabled）", fillcolor="#FFF3D6", color="#B8860B"];
+    B1 -> B2;
+  }
+  EV [label="现场证据：cfg_alive 冻结、cfg_stale 继续增长\n→ 证明确实降级，而非仍在动态决策", shape=note, fillcolor="#FFF8E1", color="#B8860B", fontsize=11.5];
+  O2 -> A1 [label=" kill -9 ", color="#B04A4A"];
+  O2 -> B1 [label=" kill -9 ", color="#B8860B"];
+  B2 -> EV [style=invis];
+}

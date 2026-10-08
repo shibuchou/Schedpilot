@@ -1,0 +1,18 @@
+digraph control {
+  graph [fontname="Microsoft YaHei", bgcolor="white", pad=0.12, nodesep=0.30, ranksep=0.42];
+  node  [fontname="Microsoft YaHei", shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#2E6CA4", fontsize=13, margin="0.14,0.09"];
+  edge  [fontname="Microsoft YaHei", color="#5A5A5A", fontsize=11, arrowsize=0.7, penwidth=1.2];
+  rankdir=TB;
+  S1 [label="① 采样\n调度事件 4 项\n+ 硬件计数器 2 项"];
+  S2 [label="② 平滑\nEWMA\n抑制瞬时抖动"];
+  S3 [label="③ 判决\n非对称滞回\n进/出阈值不同"];
+  S4 [label="④ 分类\n延迟敏感 / 计算型 / 内存型\n+ 显式后台任务", fillcolor="#FFF3D6", color="#B8860B"];
+  S5 [label="⑤ 下发\n只调有界旋钮\n切片 / 权重 / 迁移惩罚"];
+  CFG[label="配置文件\n显式标记后台任务\n排除压测客户端", shape=note, fillcolor="#EFEFEF", color="#666666", fontsize=11.5];
+  S1 -> S2 [style=invis]; S2 -> S3 [style=invis];
+  S1 -> S4; S2 -> S4; S3 -> S4;
+  S4 -> S5;
+  S5 -> S1 [label=" 下一个 100ms 周期 ", color="#2E7D4F", penwidth=1.5, constraint=false];
+  { rank=same; S1; S2; S3; }
+  CFG -> S4 [style=dashed, constraint=false];
+}

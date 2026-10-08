@@ -43,8 +43,11 @@
   干扰存活（否则 run 失败）；`abcd_experiment.sh` 将 run 脚本非零退出标记为 INVALID；端口已被占用时
   **接管并重钉** redis 到 server cpus（修复一次"未钉 redis"导致的 smoke 假象）。
 - **调度器开销折算**：`bench/measure_overhead.sh`——pinned 场景 20s / 1,076,000 请求下 **schedpilotd
-  0.9~1.3% 单核 ≈ 235 ns/请求**、派发 0.082 次/请求（~4.4k/s）；内核侧 BPF struct_ops 运行时间在本
+  0.9~1.3% 单核**、派发 0.082 次/请求（~4.4k/s）；内核侧 BPF struct_ops 运行时间在本
   6.6 backport 内核不暴露（如实标注，见 §6.11）。
+  *事后修正（2026-10-08）*：本条原文写的 **≈235 ns/请求 分母口径有误**——1,076,000 / 45,651 ≈ 23.6s，
+  而 `perf stat` 只统计 20s 窗口，用 20s 的 CPU 时间除以 23.6s 的请求数会偏小；
+  按 20s 窗口内实际请求数折算应约为 **0.24–0.28 μs/请求**。脚本侧修法见 §6.11。
 - **P1 特性（§6.13）**：CUSUM 相位检测（opt-in，单测：≤2 周期 vs ≥3 周期）；NUMA locality 报告
   （`classifier.numa`，JSONL `numa_local_pct/numa_nodes`，report-only）；**动态 BG CPU pool**
   （`bg.cpu_pool`，daemon 对 BG 全线程 setaffinity、目标消失即恢复；集成测试 5/5 PASS，SP4 与 SP3）。

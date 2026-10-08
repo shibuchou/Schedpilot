@@ -3,11 +3,17 @@
 # watching for scheduler/daemon/kernel anomalies.
 #
 #   tests/test_soak.sh [--duration 1800] [--cycle 60] [--results DIR]
+#
+# --cycle N : target minimum length of one cycle in seconds. 0 (default) means
+#             "no padding" - the cycle length is then whatever the workload
+#             takes (redis-benchmark -n 1000000, ~18-20s on the SP4 VM), which
+#             is how the archived soak runs (soak-frozen / soak-final2) were
+#             produced. Set it explicitly if you want evenly spaced cycles.
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DURATION=1800
-CYCLE=60
+CYCLE=0
 TS="$(date +%Y%m%d-%H%M%S)"
 OUT="${ROOT}/results/soak-${TS}"
 while [ $# -gt 0 ]; do
@@ -30,7 +36,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-say "duration=${DURATION}s cycle=${CYCLE}s results=$OUT"
+say "duration=${DURATION}s cycle_target=${CYCLE}s results=$OUT"
 
 "$ROOT/scripts/schedpilotctl.sh" stop >/dev/null 2>&1 || true
 mkdir -p /tmp/schedpilot-redis
@@ -55,7 +61,8 @@ WATCHDOG=0
 DMESG_START="$(dmesg 2>/dev/null | wc -l)"
 while [ "$(date +%s)" -lt "$END" ]; do
 	CYCLES=$((CYCLES + 1))
-	say "cycle $CYCLES $(date -Is)"
+	CYCLE_START=$(date +%s)
+	say "cycle $CYCLES start $(date -Is)"
 	if ! redis-benchmark -h 127.0.0.1 -p 6399 -t get -c 50 -n 1000000 -q >/dev/null 2>&1; then
 		ERRORS=$((ERRORS + 1))
 		say "ANOMALY redis-benchmark failed"
@@ -77,9 +84,15 @@ while [ "$(date +%s)" -lt "$END" ]; do
 		say "ANOMALY kernel log: $HIT"
 	fi
 	"$ROOT/build/scx_schedpilot" --stats >"$OUT/stats-cycle-${CYCLES}.txt" 2>&1 || true
+	# Report the real cycle length, and pad up to --cycle if one was requested.
+	CYCLE_ELAPSED=$(( $(date +%s) - CYCLE_START ))
+	say "cycle $CYCLES end elapsed=${CYCLE_ELAPSED}s"
+	if [ "$CYCLE" -gt 0 ] && [ "$CYCLE_ELAPSED" -lt "$CYCLE" ]; then
+		sleep $((CYCLE - CYCLE_ELAPSED))
+	fi
 done
 
-say "cycles=$CYCLES errors=$ERRORS watchdog_hits=$WATCHDOG"
+say "cycles=$CYCLES errors=$ERRORS watchdog_hits=$WATCHDOG cycle_target=${CYCLE}s"
 say "final state=$(state)"
 "$ROOT/scripts/schedpilotctl.sh" stop >/dev/null 2>&1 || true
 POST_STATE="$(state)"

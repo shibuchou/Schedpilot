@@ -1,0 +1,22 @@
+digraph arch {
+  graph [fontname="Microsoft YaHei", bgcolor="white", pad=0.12, nodesep=0.30, ranksep=0.45, rankdir=TB];
+  node  [fontname="Microsoft YaHei", shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#2E6CA4", fontsize=13, margin="0.14,0.09"];
+  edge  [fontname="Microsoft YaHei", color="#5A5A5A", fontsize=11, arrowsize=0.7, penwidth=1.2];
+
+  W    [label="负载（混部）\nRedis / Nginx / MySQL\n+ CPU / 内存干扰", fillcolor="#FFFFFF", color="#888888"];
+  OBS  [label="内核 eBPF 观测\n唤醒率 · 运行时长\n等待时间 · 切换次数"];
+  PMU  [label="用户态 PMU\nIPC · 缓存缺失"];
+  CLS  [label="分类器（每 100ms）\n平滑 + 滞回判决\n三分类 + 显式后台", fillcolor="#FFF3D6", color="#B8860B"];
+  MAP  [label="pinned maps\ngeneration + 心跳", shape=cylinder, fillcolor="#EFEFEF", color="#666666"];
+  SCHED[label="内核调度器\nLAT / COMP / CACHE 三队列", fillcolor="#D8F0DC", color="#2E7D4F"];
+
+  W -> OBS;
+  W -> PMU;
+  OBS -> CLS;
+  PMU -> CLS;
+  CLS -> MAP [label=" 有界旋钮 "];
+  MAP -> SCHED [label=" 分类结果 "];
+  SCHED -> W [label=" 分级调度 ", style=bold, color="#2E7D4F", penwidth=1.8, constraint=false];
+  { rank=same; OBS; PMU; }
+  { rank=same; CLS; MAP; }
+}

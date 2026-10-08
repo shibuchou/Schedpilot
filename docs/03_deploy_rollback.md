@@ -35,12 +35,17 @@ scripts/schedpilotctl.sh status
 #   logs/schedpilotd-*.jsonl 持续出现 sample 事件
 ```
 
-一键演示流程（省赛）：
+一键演示流程（省赛）：**见 `docs/05_demo_runbook.md`（实机校准版）**。
 
 ```bash
-scripts/env_check.sh && make && scripts/schedpilotctl.sh start --mode adaptive \
-  && bench/abcd_experiment.sh --runs 3 --duration 30 --arms D   # 演示版快速曲线
+# 推荐：一行搞定（环境自检 → A/D 两轮 → 汇总 → 自动回滚），实测约 97 秒
+scripts/demo.sh 30 1
 ```
+
+> ⚠️ **不要用下面这种写法**：它**没有基线臂 A**，因此 `analyze_results.py` 拿不到 baseline，
+> summary 里的对比列会全空（旧版本这里的示例是 `--arms D`，已删除）。
+> 需要 A/D 对比时至少写 `--arms A,D` —— `demo.sh` 已经把这些封装好了：
+> `bench/abcd_experiment.sh --workload redis --runs 1 --duration 30 --warmup 5 --arms A,D --results results/demo-<ts>`
 
 ## 3.1 容器 / cgroup 目标选择（P1 已实现）
 

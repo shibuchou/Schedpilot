@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # Deployment entry for the measured-best Nginx configuration.
 #
-# Measured (nginx-5, scenario v3, 10 runs x 60s, 0 invalid):
-#   classification + adaptive (C): +127.4% QPS / p99 -64.9% (paired +124.8% / -62.5%)
-#   basic (B):                     +37.7% QPS / p99 -35.8% (paired +37.1% / -32.0%)
-# Earlier builds showed classification-mode tail latency issues on Nginx (P1);
-# after the migration-penalty cap and BG-slice fixes they are resolved, so
-# adaptive (C) is now the recommended mode. Use --mode basic as the
-# conservative fallback (also covered by tests/test_nginx_basic.sh).
+# Measured (nginx-7, scenario v3, 20 runs x 60s, 0 invalid):
+#   C = classification, STATIC policy (--mode class --policy off):
+#       +137.1% QPS median / p99 -66.4% (paired +167.81% / -69.61%, 20/20)
+#   D = classification + ADAPTIVE (--mode adaptive --policy on):
+#       +138.1% QPS median / p99 -66.7% (paired +169.82% / -69.63%, 20/20)
+#   basic (B): +42.9% QPS / p99 -36.3% (paired +61.14% / -42.22%, 20/20)
+# C and D are statistically tied, so adaptive (D) is the default and
+# --mode basic is the conservative fallback (tests/test_nginx_basic.sh).
+# Earlier builds showed classification-mode tail latency issues on Nginx
+# (nginx-5: D only +91.4%); after the migration-penalty cap and BG-slice
+# fixes they are resolved - see docs/04_test_report.md §6.10/§6.13.
 #
 #   scripts/deploy_nginx.sh [--mode adaptive|basic] [--no-verify]
 set -euo pipefail

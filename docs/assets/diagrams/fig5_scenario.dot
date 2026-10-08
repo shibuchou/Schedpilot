@@ -1,0 +1,21 @@
+digraph scenario {
+  graph [fontname="Microsoft YaHei", bgcolor="white", pad=0.12, nodesep=0.30, ranksep=0.42];
+  node  [fontname="Microsoft YaHei", shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#2E6CA4", fontsize=13, margin="0.14,0.09"];
+  edge  [fontname="Microsoft YaHei", color="#5A5A5A", fontsize=11, arrowsize=0.7, penwidth=1.2];
+  rankdir=TB;
+  subgraph cluster_c03 {
+    label="CPU 0-3：服务与干扰同核，构成真实竞争"; fontsize=13; fontcolor="#2E6CA4"; color="#2E6CA4"; style="rounded,filled"; fillcolor="#F4F8FD";
+    REDIS [label="Redis 服务", fillcolor="#D8F0DC", color="#2E7D4F"];
+    IF    [label="stress-ng 干扰\n4 个 CPU 任务\n+ 2 个内存任务", fillcolor="#FBE3E3", color="#B04A4A"];
+    REDIS -> IF [style=invis];
+  }
+  subgraph cluster_c47 {
+    label="CPU 4-7：压测客户端隔离，避免污染"; fontsize=13; fontcolor="#666666"; color="#999999"; style="rounded,filled"; fillcolor="#FAFAFA";
+    CLIENT [label="redis-benchmark\n（排除在分类目标之外）", fillcolor="#FFFFFF", color="#888888"];
+  }
+  ARM [label="同机、同负载、同干扰，只换调度器\nA = 系统默认    vs    D = SchedPilot\n每臂 20 轮 × 60 秒，逐轮交替", fillcolor="#FFF3D6", color="#B8860B"];
+  CLIENT -> REDIS [label=" 发请求 "];
+  IF -> REDIS [label=" 抢占 CPU ", style=dashed, color="#B04A4A", constraint=false];
+  REDIS -> ARM [style=invis];
+  CLIENT -> ARM [style=invis];
+}

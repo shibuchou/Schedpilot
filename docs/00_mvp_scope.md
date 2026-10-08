@@ -24,13 +24,19 @@ formal-3 回归的发现与修复、故障注入、长稳、CI、双平台仓库
 
 ## 2. 明确不做（P1/P2/Future）
 
+> ⚠️ **状态更新（v0.3.3，2026-10-06）**：下表是 **MVP 收敛时（2026-09-29）的范围界定**。
+> 其中两项后来已经实现并测试通过，属于 **opt-in（默认关闭/仅报告）**，不影响既有矩阵结论：
+> - **CUSUM 相位检测**：已实现（`classifier.cusum`，默认关），单测显示相位跳变 ≤2 周期完成重分类；
+> - **动态 BG CPU pool**：已实现（`bg.cpu_pool`，默认空=关），`tests/test_bg_cpu_pool.sh` 5/5 PASS（SP4 与 SP3）。
+> 详见 `docs/04_test_report.md` §6.13。
+
 | 项 | 级别 | 说明 |
 |---|---|---|
-| CUSUM 相位检测 | P1 | MVP 不阻塞；分类器已保留滞后与置信度接口 |
-| 贝叶斯/爬山自动调参 | P2 | MVP 仅规则型有界调整 |
-| producer-consumer 自动识别 | P2 | MVP 用 waker-LLC 启发式替代 |
+| CUSUM 相位检测 | P1 → **已实现（opt-in）** | ~~MVP 不阻塞；分类器已保留滞后与置信度接口~~ → v0.3.3 实现，默认关 |
+| 贝叶斯/爬山自动调参 | P2 | MVP 仅规则型有界调整（仍未做） |
+| producer-consumer 自动识别 | P2 | MVP 用 waker-LLC 启发式替代（仍未做） |
 | 精确 NUMA remote/local memory access ratio | 不做宣称 | 仅允许表述为“基于当前 CPU NUMA node 与 /proc/[pid]/numa_maps 页面分布推断的 CPU-memory placement locality/mismatch” |
-| 动态 BG CPU pool | P1 | MVP 仅显式标记 + vtime 降权收容 |
+| 动态 BG CPU pool | P1 → **已实现（opt-in）** | ~~MVP 仅显式标记 + vtime 降权收容~~ → v0.3.3 实现，默认关 |
 | RAPL / RPC / Kubernetes / 多负载全面适配 | Future | 不进入省赛范围 |
 
 ## 3. 未完成项记录规则

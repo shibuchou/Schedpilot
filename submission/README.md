@@ -24,8 +24,12 @@
 | 测试方案 | `docs/02_test_plan.md` |
 | MVP 范围 | `docs/00_mvp_scope.md` |
 | 测试报告（含正式矩阵与负结果） | `docs/04_test_report.md` |
-| 10 分钟演示流程（评审现场版） | `docs/05_demo_runbook.md` |
+| 10 分钟演示流程（评审现场版，实机校准） | `docs/05_demo_runbook.md` |
+| 演示前风险清单与答辩 Q&A | `docs/06_demo_risks_qa.md` |
 | 答辩材料包（PPT 提纲 + 视频脚本 + Q&A） | `submission/defense_pack.md` |
+| **项目说明书（docx / pdf）** | `submission/SchedPilot_项目说明书.docx`、`.pdf` |
+| **说明书配图（7 张，PNG + Graphviz `.dot` 源码）** | `docs/assets/diagrams/` |
+| **最终构建正式矩阵证据（formal-5，HEAD 65c4485）** | `evidence/sp4-vm/formal-5/` |
 | 设计方案（含长期 roadmap） | `SchedPilot_设计方案.md` |
 | 证据索引 | `submission/evidence_index.md` |
 | 一键演示 | `scripts/demo.sh` |
@@ -35,9 +39,20 @@
 
 ```bash
 scripts/env_check.sh --json evidence/sp4-vm/env_check.json
+# SP4（注意：--install 只装 /usr/local/bin，不更新 build/；见 docs/06 S1 的提醒）
 scripts/build.sh --kernel-src /usr/src/linux-6.6.0-<ver>.oe2403sp4.x86_64 --install
+# SP3 用的是另一棵源码树（内核自建，见 docs/04 §6.12）：
+#   scripts/build.sh --kernel-src /usr/src/kernel-source-6.6.0-<ver>.oe2403sp3
 bench/abcd_experiment.sh --workload redis --runs 20 --duration 60 --warmup 10 \
   --arms A,B,C,D,d-no-pmu,d-no-llc,d-no-bg --results results/formal-4
+
+# 最终构建（HEAD 65c4485）的正式矩阵：A/D 两臂 × 20 轮
+bench/abcd_experiment.sh --workload redis --runs 20 --duration 60 --warmup 10 \
+  --arms A,D --results results/formal-5
 ```
+
+> **冻结主键建议以二进制 SHA256 为准，而非 commit**：归档中同一个 `be962b8` 出现过两个不同的
+> loader 哈希（`9d1e904f` 与 `76f0cad3`），说明至少有一次跑的是改过源码但未提交的工作树。
+> `formal-5` 起按"commit + 二进制 SHA256"双主键记录。
 
 Baseline 口径：openEuler 默认 fair-class 调度器（赛题表述为默认 CFS）。
